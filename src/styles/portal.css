@@ -82,7 +82,7 @@ select.inp option{background:var(--s3);color:var(--t1)}
 .lbl{font-size:11px;font-weight:700;color:var(--t2);display:block;margin-bottom:5px;text-transform:uppercase;letter-spacing:.06em}
 
 /* Screen pages */
-.screen{display:none}.screen.active{display:block}
+.screen{display:block}.screen.active{display:block}
 
 /* Transaction row */
 .tx-row{display:flex;align-items:center;gap:13px;padding:13px 6px;border-bottom:1px solid var(--b1);cursor:pointer;transition:background .15s;border-radius:var(--r3)}
