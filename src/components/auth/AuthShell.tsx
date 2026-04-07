@@ -1,4 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { auth } from '../../lib/firebase';
+import {
+  registerVendor,
+  sendVendorResetEmail,
+  signInVendor,
+  signInVendorWithGoogle,
+  submitVendorKyc,
+} from '../../services/vendorAuth';
 
 type AuthStep = 'login' | 'forgot' | 'register' | 'otp' | 'kyc' | 'pending';
 
@@ -51,12 +59,33 @@ export function AuthShell({ hidden, onComplete, onShowToast }: AuthShellProps) {
   const [bizLga, setBizLga] = useState('');
   const [idType, setIdType] = useState('');
   const [idNumber, setIdNumber] = useState('');
+  const [loading, setLoading] = useState<'login' | 'google' | 'register' | 'forgot' | 'kyc' | null>(null);
 
   useEffect(() => {
     if (otpTimer <= 0) return;
     const t = setTimeout(() => setOtpTimer((s) => s - 1), 1000);
     return () => clearTimeout(t);
   }, [otpTimer]);
+
+  useEffect(() => {
+    const html = document.documentElement;
+    const body = document.body;
+    const prevHtmlOverflow = html.style.overflow;
+    const prevBodyOverflow = body.style.overflow;
+
+    if (!hidden) {
+      html.style.overflow = 'hidden';
+      body.style.overflow = 'hidden';
+    } else {
+      html.style.overflow = '';
+      body.style.overflow = '';
+    }
+
+    return () => {
+      html.style.overflow = prevHtmlOverflow;
+      body.style.overflow = prevBodyOverflow;
+    };
+  }, [hidden]);
 
   const pwScore = useMemo(() => {
     const pw = regData.pw;
@@ -73,20 +102,53 @@ export function AuthShell({ hidden, onComplete, onShowToast }: AuthShellProps) {
 
   const goAuthStep = (s: AuthStep) => setStep(s);
 
-  const doLogin = () => {
+  const doLogin = async () => {
     if (!loginEmail || !loginPw) { setLoginErr('Please enter your email and password.'); return; }
     if (!loginEmail.includes('@')) { setLoginErr('Please enter a valid email address.'); return; }
     setLoginErr('');
-    setTimeout(() => onComplete(), 900);
+
+    try {
+      setLoading('login');
+      await signInVendor(loginEmail, loginPw);
+      onShowToast('Signed in successfully.');
+      onComplete();
+    } catch (error) {
+      setLoginErr(error instanceof Error ? error.message : 'Unable to sign in right now.');
+    } finally {
+      setLoading(null);
+    }
   };
 
-  const doForgot = () => {
+  const doGoogleLogin = async () => {
+    setLoginErr('');
+    try {
+      setLoading('google');
+      await signInVendorWithGoogle();
+      onShowToast('Signed in with Google.');
+      onComplete();
+    } catch (error) {
+      setLoginErr(error instanceof Error ? error.message : 'Google sign-in failed.');
+    } finally {
+      setLoading(null);
+    }
+  };
+
+  const doForgot = async () => {
     if (!forgotEmail) return;
-    onShowToast(`Reset link sent to ${forgotEmail}`);
-    setTimeout(() => setStep('login'), 800);
+
+    try {
+      setLoading('forgot');
+      await sendVendorResetEmail(forgotEmail);
+      onShowToast(`Reset link sent to ${forgotEmail}`);
+      setTimeout(() => setStep('login'), 800);
+    } catch (error) {
+      onShowToast(error instanceof Error ? error.message : 'Unable to send reset email.');
+    } finally {
+      setLoading(null);
+    }
   };
 
-  const doRegister = () => {
+  const doRegister = async () => {
     const { fname, lname, kitchen, email, phone, pw } = regData;
     if (!fname || !lname) { setRegErr('Please enter your full name.'); return; }
     if (!kitchen) { setRegErr('Please enter your kitchen name.'); return; }
@@ -95,9 +157,26 @@ export function AuthShell({ hidden, onComplete, onShowToast }: AuthShellProps) {
     if (pw.length < 8) { setRegErr('Password must be at least 8 characters.'); return; }
     if (!regAgree) { setRegErr('Please agree to the Terms of Service.'); return; }
     setRegErr('');
-    setStep('otp');
-    setOtpTimer(60);
-    setTimeout(() => otpRefs.current[0]?.focus(), 100);
+
+    try {
+      setLoading('register');
+      await registerVendor({
+        firstName: fname,
+        lastName: lname,
+        businessName: kitchen,
+        email,
+        phone,
+        password: pw,
+      });
+      setStep('otp');
+      setOtpTimer(60);
+      setTimeout(() => otpRefs.current[0]?.focus(), 100);
+      onShowToast('Account created. Verify and finish onboarding.');
+    } catch (error) {
+      setRegErr(error instanceof Error ? error.message : 'Unable to create your account.');
+    } finally {
+      setLoading(null);
+    }
   };
 
   const doOtp = () => {
@@ -141,8 +220,32 @@ export function AuthShell({ hidden, onComplete, onShowToast }: AuthShellProps) {
 
   const review = populateReview();
 
-  const doKycSubmit = () => {
-    setTimeout(() => setStep('pending'), 900);
+  const doKycSubmit = async () => {
+    if (!auth.currentUser) {
+      onShowToast('Your session expired. Please sign in again.');
+      setStep('login');
+      return;
+    }
+
+    try {
+      setLoading('kyc');
+      await submitVendorKyc(auth.currentUser.uid, {
+        businessType: bizType,
+        address: bizAddress,
+        state: bizState,
+        lga: bizLga,
+        idType,
+        idNumber,
+        cuisineTypes: selectedCuisines,
+        selfieCaptured,
+      });
+      onShowToast('KYC details submitted for review.');
+      setStep('pending');
+    } catch (error) {
+      onShowToast(error instanceof Error ? error.message : 'Unable to submit your KYC details.');
+    } finally {
+      setLoading(null);
+    }
   };
 
   const authShellClass = hidden ? 'hidden' : '';
@@ -203,9 +306,9 @@ export function AuthShell({ hidden, onComplete, onShowToast }: AuthShellProps) {
               </div>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 20 }}>
-                <button className="social-btn" onClick={() => { onShowToast('Redirecting to google login…'); setTimeout(() => onComplete(), 900); }}>
+                <button className="social-btn" onClick={doGoogleLogin} disabled={loading === 'google'}>
                   <svg width="18" height="18" viewBox="0 0 24 24"><path fill="#EA4335" d="M5.27 9.76A7.08 7.08 0 0112 4.9c1.76 0 3.35.65 4.57 1.7l3.4-3.4A11.95 11.95 0 0012 1C8.2 1 4.83 3 2.84 6.07l2.43 3.69z" /><path fill="#34A853" d="M16.04 18.01A7.08 7.08 0 0112 19.1c-2.84 0-5.27-1.67-6.48-4.1l-3.69 2.43A11.95 11.95 0 0012 23c3.24 0 6.18-1.22 8.4-3.22l-4.36-1.77z" /><path fill="#4A90D9" d="M20.4 19.78A11.95 11.95 0 0023 12c0-.78-.08-1.53-.22-2.27H12v4.54h6.19a5.4 5.4 0 01-2.15 3.27l4.36 1.77-.01.47z" /><path fill="#FBBC05" d="M5.52 15A7.08 7.08 0 014.9 12c0-1.05.18-2.07.5-3l-2.56-3.93A11.95 11.95 0 001 12c0 1.93.46 3.75 1.27 5.38L5.52 15z" /></svg>
-                  Continue with Google
+                  {loading === 'google' ? 'Connecting...' : 'Continue with Google'}
                 </button>
               </div>
 
@@ -237,8 +340,8 @@ export function AuthShell({ hidden, onComplete, onShowToast }: AuthShellProps) {
 
               {loginErr && <div id="login-err" style={{ color: 'var(--re)', fontSize: 12.5, marginBottom: 12, background: 'var(--reg)', padding: '10px 13px', borderRadius: 'var(--r2)' }}>{loginErr}</div>}
 
-              <button className="btn btn-primary" style={{ width: '100%', justifyContent: 'center', padding: 13, fontSize: 14 }} onClick={doLogin}>
-                Sign In to Dashboard
+              <button className="btn btn-primary" style={{ width: '100%', justifyContent: 'center', padding: 13, fontSize: 14 }} onClick={doLogin} disabled={loading === 'login'}>
+                {loading === 'login' ? 'Signing In...' : 'Sign In to Dashboard'}
               </button>
 
               <div style={{ textAlign: 'center', marginTop: 20, fontSize: 13, color: 'var(--t3)' }}>
@@ -261,7 +364,7 @@ export function AuthShell({ hidden, onComplete, onShowToast }: AuthShellProps) {
                 <label className="lbl">Email Address</label>
                 <input className="inp" type="email" value={forgotEmail} onChange={(e) => setForgotEmail(e.target.value)} placeholder="you@example.com" />
               </div>
-              <button className="btn btn-primary" style={{ width: '100%', justifyContent: 'center', padding: 13 }} onClick={doForgot}>Send Reset Link</button>
+              <button className="btn btn-primary" style={{ width: '100%', justifyContent: 'center', padding: 13 }} onClick={doForgot} disabled={loading === 'forgot'}>{loading === 'forgot' ? 'Sending...' : 'Send Reset Link'}</button>
             </div>
           )}
 
@@ -327,8 +430,8 @@ export function AuthShell({ hidden, onComplete, onShowToast }: AuthShellProps) {
 
               {regErr && <div id="reg-err" style={{ color: 'var(--re)', fontSize: 12.5, marginBottom: 12, background: 'var(--reg)', padding: '10px 13px', borderRadius: 'var(--r2)' }}>{regErr}</div>}
 
-              <button className="btn btn-primary" style={{ width: '100%', justifyContent: 'center', padding: 13, fontSize: 14 }} onClick={doRegister}>
-                Create Account &amp; Continue
+              <button className="btn btn-primary" style={{ width: '100%', justifyContent: 'center', padding: 13, fontSize: 14 }} onClick={doRegister} disabled={loading === 'register'}>
+                {loading === 'register' ? 'Creating Account...' : 'Create Account &amp; Continue'}
               </button>
             </div>
           )}
@@ -565,9 +668,9 @@ export function AuthShell({ hidden, onComplete, onShowToast }: AuthShellProps) {
 
                   <div style={{ display: 'flex', gap: 10 }}>
                     <button className="btn btn-ghost" style={{ flex: 1 }} onClick={() => setKycStep(3)}>← Back</button>
-                    <button className="btn btn-primary" style={{ flex: 2, justifyContent: 'center', padding: 13 }} onClick={doKycSubmit}>
+                    <button className="btn btn-primary" style={{ flex: 2, justifyContent: 'center', padding: 13 }} onClick={doKycSubmit} disabled={loading === 'kyc'}>
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 13l4 4L19 7" /></svg>
-                      Submit for Review
+                      {loading === 'kyc' ? 'Submitting...' : 'Submit for Review'}
                     </button>
                   </div>
                 </div>
