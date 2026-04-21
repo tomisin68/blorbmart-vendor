@@ -28,6 +28,7 @@ export function AddFoodModal({ open, editingItem, onClose, onSave }: AddFoodModa
   const [tags, setTags] = useState<string[]>([]);
   const [err, setErr] = useState('');
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [imageData, setImageData] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -39,7 +40,8 @@ export function AddFoodModal({ open, editingItem, onClose, onSave }: AddFoodModa
       setPrep(String(editingItem.prep));
       setAvail(editingItem.avail);
       setTags([...editingItem.tags]);
-      setPreviewUrl(null);
+      setPreviewUrl(editingItem.image || null);
+      setImageData(editingItem.image || null);
     } else {
       setName('');
       setCat('');
@@ -50,6 +52,7 @@ export function AddFoodModal({ open, editingItem, onClose, onSave }: AddFoodModa
       setTags([]);
       setErr('');
       setPreviewUrl(null);
+      setImageData(null);
     }
   }, [open, editingItem]);
 
@@ -61,7 +64,9 @@ export function AddFoodModal({ open, editingItem, onClose, onSave }: AddFoodModa
     if (!file) return;
     const reader = new FileReader();
     reader.onload = (e) => {
-      setPreviewUrl(String(e.target?.result || ''));
+      const result = String(e.target?.result || '');
+      setPreviewUrl(result);
+      setImageData(result);
     };
     reader.readAsDataURL(file);
   };
@@ -82,6 +87,7 @@ export function AddFoodModal({ open, editingItem, onClose, onSave }: AddFoodModa
       avail,
       tags,
       emoji: EMOJIS[cat] || '🍽',
+      image: imageData || editingItem?.image || '',
     });
   };
 

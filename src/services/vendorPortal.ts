@@ -244,7 +244,7 @@ export const saveVendorProduct = async ({
       subCategoryId: categoryMeta.subCategoryId,
       subCategoryName: categoryMeta.subCategoryName,
       hasVariants: false,
-      images: [],
+      images: item.image ? [item.image] : [],
       totalReviews: 0,
       totalSold: 0,
       rating: 0,

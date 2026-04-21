@@ -31,6 +31,7 @@ export interface FoodItem {
   avail: 'available' | 'soldout' | 'hidden';
   tags: string[];
   emoji: string;
+  image?: string; // URL or base64 string for food image
 }
 
 export interface OrderItem {
