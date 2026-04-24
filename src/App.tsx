@@ -9,6 +9,7 @@ import { TxDetailModal } from './components/modals/TxDetailModal';
 import { WithdrawModal } from './components/modals/WithdrawModal';
 import { BankScreen } from './components/screens/BankScreen';
 import { HoursScreen } from './components/screens/HoursScreen';
+import { KycScreen } from './components/screens/KycScreen';
 import { MenuScreen } from './components/screens/MenuScreen';
 import { NotificationsScreen } from './components/screens/NotificationsScreen';
 import { OrdersScreen } from './components/screens/OrdersScreen';
@@ -18,7 +19,7 @@ import { TransactionsScreen } from './components/screens/TransactionsScreen';
 import { WithdrawalsScreen } from './components/screens/WithdrawalsScreen';
 import { INITIAL_FOOD_ITEMS, INITIAL_ORDERS, NOTIFS, TXNS, WEEK_SCHEDULE, type FoodItem, type Order, type Txn, type WeekScheduleRow } from './data/mock';
 import { auth } from './lib/firebase';
-import { getVendorProfile, getVendorUserProfile, signOutVendor } from './services/vendorAuth';
+import { getVendorProfile, getVendorUserProfile, isVendorOtpVerified, signOutVendor } from './services/vendorAuth';
 import {
   advanceVendorOrderStatus,
   archiveVendorProduct,
@@ -57,6 +58,7 @@ const PAGES: Record<PageKey, string> = {
   withdrawals: 'Withdrawals',
   bank: 'Bank Account',
   security: 'Security & PIN',
+  kyc: 'KYC Verification',
   notifs: 'Notifications',
 };
 
@@ -109,7 +111,12 @@ function App() {
       setCurrentUser(user);
 
       if (!initializedAuth.current) {
-        setAuthHidden(Boolean(user));
+        if (!user) {
+          setAuthHidden(false);
+        } else {
+          const verified = await isVendorOtpVerified().catch(() => false);
+          setAuthHidden(Boolean(verified));
+        }
         initializedAuth.current = true;
       }
 
@@ -125,6 +132,10 @@ function App() {
       }
 
       try {
+        const otpVerified = await isVendorOtpVerified().catch(() => false);
+        if (!otpVerified) {
+          setAuthHidden(false);
+        }
         const [vendorData, userData, storeData, controls] = await Promise.all([
           getVendorProfile(user.uid),
           getVendorUserProfile(user.uid),
@@ -553,6 +564,9 @@ function App() {
             )}
             {page === 'security' && (
               <SecurityScreen onShowToast={(msg) => showToast(msg)} />
+            )}
+            {page === 'kyc' && (
+              <KycScreen onShowToast={(msg) => showToast(msg)} />
             )}
             {page === 'notifs' && (
               <NotificationsScreen notifs={notifs} onRead={markNotifRead} onMarkAllRead={markAllRead} />

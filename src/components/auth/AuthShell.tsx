@@ -2,10 +2,13 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { auth } from '../../lib/firebase';
 import {
   registerVendor,
+  sendVendorEmailOtp,
   sendVendorResetEmail,
   signInVendor,
   signInVendorWithGoogle,
   submitVendorKyc,
+  isVendorOtpVerified,
+  verifyVendorEmailOtp,
 } from '../../services/vendorAuth';
 
 type AuthStep = 'login' | 'forgot' | 'register' | 'otp' | 'kyc' | 'pending';
@@ -59,7 +62,7 @@ export function AuthShell({ hidden, onComplete, onShowToast }: AuthShellProps) {
   const [bizLga, setBizLga] = useState('');
   const [idType, setIdType] = useState('');
   const [idNumber, setIdNumber] = useState('');
-  const [loading, setLoading] = useState<'login' | 'google' | 'register' | 'forgot' | 'kyc' | null>(null);
+  const [loading, setLoading] = useState<'login' | 'google' | 'register' | 'forgot' | 'kyc' | 'otp' | null>(null);
 
   useEffect(() => {
     if (otpTimer <= 0) return;
@@ -85,6 +88,22 @@ export function AuthShell({ hidden, onComplete, onShowToast }: AuthShellProps) {
       html.style.overflow = prevHtmlOverflow;
       body.style.overflow = prevBodyOverflow;
     };
+  }, [hidden]);
+
+  useEffect(() => {
+    const user = auth.currentUser;
+    if (!user || hidden) return;
+    const email = user.email || '';
+    if (!email) return;
+    isVendorOtpVerified()
+      .then((verified) => {
+        if (!verified) {
+          setRegData((d) => ({ ...d, email }));
+          setStep('otp');
+          setOtpTimer(60);
+        }
+      })
+      .catch(() => undefined);
   }, [hidden]);
 
   const pwScore = useMemo(() => {
@@ -113,7 +132,13 @@ export function AuthShell({ hidden, onComplete, onShowToast }: AuthShellProps) {
       onShowToast('Signed in successfully.');
       onComplete();
     } catch (error) {
-      setLoginErr(error instanceof Error ? error.message : 'Unable to sign in right now.');
+      const message = error instanceof Error ? error.message : 'Unable to sign in right now.';
+      setLoginErr(message);
+      if (message.toLowerCase().includes('otp')) {
+        setRegData((d) => ({ ...d, email: loginEmail }));
+        setStep('otp');
+        setOtpTimer(60);
+      }
     } finally {
       setLoading(null);
     }
@@ -127,7 +152,15 @@ export function AuthShell({ hidden, onComplete, onShowToast }: AuthShellProps) {
       onShowToast('Signed in with Google.');
       onComplete();
     } catch (error) {
-      setLoginErr(error instanceof Error ? error.message : 'Google sign-in failed.');
+      const message = error instanceof Error ? error.message : 'Google sign-in failed.';
+      setLoginErr(message);
+      if (message.toLowerCase().includes('otp')) {
+        const emailMatch = message.match(/[^\s]+@[^\s]+\.[^\s]+/);
+        const email = emailMatch ? emailMatch[0] : regData.email;
+        setRegData((d) => ({ ...d, email: email || d.email }));
+        setStep('otp');
+        setOtpTimer(60);
+      }
     } finally {
       setLoading(null);
     }
@@ -168,10 +201,11 @@ export function AuthShell({ hidden, onComplete, onShowToast }: AuthShellProps) {
         phone,
         password: pw,
       });
+      await sendVendorEmailOtp(email);
       setStep('otp');
       setOtpTimer(60);
       setTimeout(() => otpRefs.current[0]?.focus(), 100);
-      onShowToast('Account created. Verify and finish onboarding.');
+      onShowToast('Account created. Verification code sent to your email.');
     } catch (error) {
       setRegErr(error instanceof Error ? error.message : 'Unable to create your account.');
     } finally {
@@ -179,17 +213,39 @@ export function AuthShell({ hidden, onComplete, onShowToast }: AuthShellProps) {
     }
   };
 
-  const doOtp = () => {
+  const doOtp = async () => {
     const code = otpDigits.join('');
     if (code.length < 6) { setOtpErr('Please enter the complete 6-digit code.'); return; }
+    if (!regData.email.includes('@')) { setOtpErr('Missing registration email. Please register again.'); return; }
     setOtpErr('');
-    setStep('kyc');
-    setKycStep(1);
+    try {
+      setLoading('otp');
+      await verifyVendorEmailOtp(regData.email, code);
+      setStep('kyc');
+      setKycStep(1);
+      onShowToast('Email verified successfully.');
+    } catch (error) {
+      setOtpErr(error instanceof Error ? error.message : 'Invalid code.');
+    } finally {
+      setLoading(null);
+    }
   };
 
-  const resendOtp = () => {
-    setOtpTimer(60);
-    onShowToast('OTP resent!');
+  const resendOtp = async () => {
+    if (!regData.email.includes('@')) {
+      setOtpErr('Missing registration email.');
+      return;
+    }
+    try {
+      setLoading('otp');
+      await sendVendorEmailOtp(regData.email);
+      setOtpTimer(60);
+      onShowToast('Verification code resent.');
+    } catch (error) {
+      setOtpErr(error instanceof Error ? error.message : 'Failed to resend code.');
+    } finally {
+      setLoading(null);
+    }
   };
 
   const toggleCuisine = (v: string) => {
@@ -249,8 +305,6 @@ export function AuthShell({ hidden, onComplete, onShowToast }: AuthShellProps) {
   };
 
   const authShellClass = hidden ? 'hidden' : '';
-
-  const otpPhone = `+234 ${(regData.phone || '8012345678').replace(/^0/, '').replace(/(\\d{3})(\\d{3})(\\d{4})/, '$1 $2 $3')}`;
 
   return (
     <div id="auth-shell" className={authShellClass}>
@@ -443,7 +497,7 @@ export function AuthShell({ hidden, onComplete, onShowToast }: AuthShellProps) {
                   <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="var(--or)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72 12.84 12.84 0 00.7 2.81 2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45 12.84 12.84 0 002.81.7A2 2 0 0122 16.92z" /></svg>
                 </div>
                 <div style={{ fontFamily: 'var(--hd)', fontWeight: 800, fontSize: 22, marginBottom: 6 }}>Verify Your Number</div>
-                <div style={{ fontSize: 13, color: 'var(--t3)' }}>We sent a 6-digit code to <span id="otp-phone-display" style={{ color: 'var(--t1)', fontWeight: 600 }}>{otpPhone}</span></div>
+                <div style={{ fontSize: 13, color: 'var(--t3)' }}>We sent a 6-digit code to <span id="otp-phone-display" style={{ color: 'var(--t1)', fontWeight: 600 }}>{regData.email || 'your email'}</span></div>
               </div>
 
               <div className="otp-grid" style={{ marginBottom: 24 }}>
@@ -474,10 +528,12 @@ export function AuthShell({ hidden, onComplete, onShowToast }: AuthShellProps) {
 
               {otpErr && <div id="otp-err" style={{ color: 'var(--re)', fontSize: 12.5, marginBottom: 12, textAlign: 'center' }}>{otpErr}</div>}
 
-              <button className="btn btn-primary" style={{ width: '100%', justifyContent: 'center', padding: 13 }} onClick={doOtp}>Verify Code</button>
+              <button className="btn btn-primary" style={{ width: '100%', justifyContent: 'center', padding: 13 }} onClick={doOtp} disabled={loading === 'otp'}>
+                {loading === 'otp' ? 'Verifying...' : 'Verify Code'}
+              </button>
 
               <div style={{ textAlign: 'center', marginTop: 16, fontSize: 12.5, color: 'var(--t3)' }}>
-                Didn't receive it? {otpTimer > 0 ? <span id="resend-timer"> in {otpTimer}s</span> : <button id="resend-btn" onClick={resendOtp} style={{ background: 'none', border: 'none', color: 'var(--or)', fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--bd)' }}>Resend</button>}
+                Didn't receive it? {otpTimer > 0 ? <span id="resend-timer"> in {otpTimer}s</span> : <button id="resend-btn" onClick={resendOtp} disabled={loading === 'otp'} style={{ background: 'none', border: 'none', color: 'var(--or)', fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--bd)' }}>Resend</button>}
               </div>
             </div>
           )}

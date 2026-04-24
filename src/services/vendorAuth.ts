@@ -18,6 +18,7 @@ import {
 } from 'firebase/firestore'
 
 import { auth, db } from '../lib/firebase'
+import { apiUrl } from '../lib/api'
 import type { VendorProfile, VendorUserProfile } from '../types/firebase'
 
 interface RegisterVendorInput {
@@ -98,6 +99,12 @@ const ensureVendorRole = async (uid: string) => {
   }
 }
 
+const isVendorOtpVerifiedByUid = async (uid: string) => {
+  const userSnap = await getDoc(doc(db, usersCollection, uid))
+  if (!userSnap.exists()) return false
+  return Boolean(userSnap.data()?.isEmailOtpVerified)
+}
+
 const writeVendorUserDocs = async (
   user: User,
   input: Pick<RegisterVendorInput, 'firstName' | 'lastName' | 'businessName' | 'phone'>,
@@ -118,6 +125,7 @@ const writeVendorUserDocs = async (
       accountRole: 'vendor',
       accountStatus: 'active',
       isEmailVerified: user.emailVerified,
+      isEmailOtpVerified: false,
       isPhoneVerified: false,
       createdAt: serverTimestamp(),
       lastLoginAt: serverTimestamp(),
@@ -149,6 +157,12 @@ export const signInVendor = async (email: string, password: string) => {
   try {
     const result = await signInWithEmailAndPassword(auth, email, password)
     await ensureVendorRole(result.user.uid)
+    const otpVerified = await isVendorOtpVerifiedByUid(result.user.uid)
+    if (!otpVerified) {
+      await sendVendorEmailOtp(email).catch(() => undefined)
+      await signOut(auth).catch(() => undefined)
+      throw new Error('Email OTP verification required. Check your email for the 6-digit code.')
+    }
     await updateDoc(doc(db, usersCollection, result.user.uid), {
       lastLoginAt: serverTimestamp(),
       isEmailVerified: result.user.emailVerified,
@@ -180,6 +194,13 @@ export const signInVendorWithGoogle = async () => {
       phone: user.phoneNumber || '',
     })
 
+    const otpVerified = await isVendorOtpVerifiedByUid(user.uid)
+    if (!otpVerified) {
+      if (user.email) await sendVendorEmailOtp(user.email).catch(() => undefined)
+      await signOut(auth).catch(() => undefined)
+      throw new Error(`Email OTP verification required for ${user.email || 'your email'}. Check your email for the 6-digit code.`)
+    }
+
     return user
   } catch (error) {
     if (auth.currentUser) {
@@ -207,6 +228,43 @@ export const registerVendor = async (input: RegisterVendorInput) => {
   } catch (error) {
     throw new Error(getFriendlyAuthError(error))
   }
+}
+
+export const sendVendorEmailOtp = async (email: string) => {
+  const response = await fetch(apiUrl('/api/vendor-auth/email-otp/send'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email }),
+  })
+  const payload = await response.json().catch(() => ({}))
+  if (!response.ok) {
+    throw new Error(payload.message || 'Failed to send verification code')
+  }
+}
+
+export const verifyVendorEmailOtp = async (email: string, code: string) => {
+  const response = await fetch(apiUrl('/api/vendor-auth/email-otp/verify'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, code }),
+  })
+  const payload = await response.json().catch(() => ({}))
+  if (!response.ok) {
+    throw new Error(payload.message || 'Verification failed')
+  }
+}
+
+export const isVendorOtpVerified = async () => {
+  if (!auth.currentUser) return false
+  const response = await fetch(apiUrl('/api/vendor-auth/email-otp/status'), {
+    method: 'GET',
+    headers: {
+      Authorization: `Bearer ${await auth.currentUser.getIdToken()}`,
+    },
+  })
+  const payload = await response.json().catch(() => ({}))
+  if (!response.ok) return false
+  return Boolean(payload.data?.verified)
 }
 
 export const submitVendorKyc = async (uid: string, input: VendorKycInput) => {
