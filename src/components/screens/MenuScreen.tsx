@@ -4,17 +4,25 @@ import type { FoodItem } from '../../data/mock';
 interface MenuScreenProps {
   foodItems: FoodItem[];
   onOpenAdd: () => void;
-  onEdit: (id: string) => void;
-  onDelete: (id: string) => void;
-  onToggleAvail: (id: string) => void;
+  onEdit: (id: string) => void | Promise<void>;
+  onCopy: (id: string) => void | Promise<void>;
+  onDelete: (id: string) => void | Promise<void>;
+  onToggleAvail: (id: string) => void | Promise<void>;
+  onToggleFeatured: (id: string, featured: boolean) => void | Promise<void>;
+  onBulkAction: (ids: string[], action: 'soldout' | 'hide' | 'archive') => void | Promise<void>;
+  onReorder: (ids: string[]) => void | Promise<void>;
 }
 
-export function MenuScreen({ foodItems, onOpenAdd, onEdit, onDelete, onToggleAvail }: MenuScreenProps) {
+export function MenuScreen({ foodItems, onOpenAdd, onEdit, onCopy, onDelete, onToggleAvail, onToggleFeatured, onBulkAction, onReorder }: MenuScreenProps) {
   const [catFilter, setCatFilter] = useState<'all' | FoodItem['cat']>('all');
   const [query, setQuery] = useState('');
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [draggingId, setDraggingId] = useState<string | null>(null);
 
   const items = useMemo(() => {
-    return foodItems.filter((it) => {
+    return [...foodItems]
+    .sort((a, b) => Number(Boolean(b.featured)) - Number(Boolean(a.featured)) || Number(a.menuOrder || 0) - Number(b.menuOrder || 0) || a.name.localeCompare(b.name))
+    .filter((it) => {
       const catOk = catFilter === 'all' || it.cat === catFilter;
       const q = query.toLowerCase();
       const searchOk = !q || it.name.toLowerCase().includes(q) || it.desc.toLowerCase().includes(q);
@@ -33,6 +41,16 @@ export function MenuScreen({ foodItems, onOpenAdd, onEdit, onDelete, onToggleAva
     spicy: 'Spicy',
     vegan: 'Vegan',
     new: 'New',
+  };
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  };
+
+  const applyBulk = (action: 'soldout' | 'hide' | 'archive') => {
+    if (!selectedIds.length) return;
+    onBulkAction(selectedIds, action);
+    setSelectedIds([]);
   };
 
   return (
@@ -75,6 +93,13 @@ export function MenuScreen({ foodItems, onOpenAdd, onEdit, onDelete, onToggleAva
               ))}
             </div>
           </div>
+          <div style={{ marginTop: 10, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button className="btn btn-ghost btn-sm" onClick={() => setSelectedIds(items.map((item) => item.id))}>Select All</button>
+            <button className="btn btn-ghost btn-sm" onClick={() => setSelectedIds([])}>Clear</button>
+            <button className="btn btn-ghost btn-sm" onClick={() => applyBulk('soldout')} disabled={!selectedIds.length}>Bulk Sold Out</button>
+            <button className="btn btn-ghost btn-sm" onClick={() => applyBulk('hide')} disabled={!selectedIds.length}>Bulk Hide</button>
+            <button className="btn btn-danger btn-sm" onClick={() => applyBulk('archive')} disabled={!selectedIds.length}>Bulk Archive</button>
+          </div>
         </div>
 
         <div id="menu-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(265px,1fr))', gap: 14 }}>
@@ -91,6 +116,29 @@ export function MenuScreen({ foodItems, onOpenAdd, onEdit, onDelete, onToggleAva
 
             return (
               <div className="card" key={item.id} style={{ padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+                <div
+                  draggable
+                  onDragStart={() => setDraggingId(item.id)}
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={() => {
+                    if (!draggingId || draggingId === item.id) return;
+                    const ordered = [...items];
+                    const from = ordered.findIndex((x) => x.id === draggingId);
+                    const to = ordered.findIndex((x) => x.id === item.id);
+                    if (from < 0 || to < 0) return;
+                    const [moved] = ordered.splice(from, 1);
+                    ordered.splice(to, 0, moved);
+                    onReorder(ordered.map((x) => x.id));
+                    setDraggingId(null);
+                  }}
+                  style={{ padding: '6px 10px', fontSize: 11, color: 'var(--t3)', borderBottom: '1px solid var(--b1)', display: 'flex', justifyContent: 'space-between' }}
+                >
+                  <span>Drag to reorder</span>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+                    <input type="checkbox" checked={selectedIds.includes(item.id)} onChange={() => toggleSelect(item.id)} />
+                    <span>Select</span>
+                  </label>
+                </div>
                 <div style={{ height: 128, background: item.image ? `url(${item.image}) center/cover no-repeat` : 'linear-gradient(135deg,var(--s3),var(--s4))', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative', fontSize: 52, flexShrink: 0 }}>
                   {!item.image && item.emoji}
                   <div style={{ position: 'absolute', inset: 0, background: isHidden || isOut ? 'rgba(0,0,0,.35)' : 'linear-gradient(to top,rgba(0,0,0,.18),transparent)', pointerEvents: 'none' }} />
@@ -98,6 +146,9 @@ export function MenuScreen({ foodItems, onOpenAdd, onEdit, onDelete, onToggleAva
                     <span className={`chip ${statusClass}`}>{statusLabel}</span>
                   </div>
                   <div style={{ position: 'absolute', top: 8, right: 8, display: 'flex', gap: 5 }}>
+                    <button className="btn btn-ghost btn-sm" style={{ padding: '5px 8px', background: 'rgba(0,0,0,.6)', borderColor: 'transparent', backdropFilter: 'blur(4px)' }} onClick={() => onCopy(item.id)} title="Copy item">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--t1)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" /></svg>
+                    </button>
                     <button className="btn btn-ghost btn-sm" style={{ padding: '5px 8px', background: 'rgba(0,0,0,.6)', borderColor: 'transparent', backdropFilter: 'blur(4px)' }} onClick={() => onEdit(item.id)} title="Edit item">
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--t1)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.4-9.4a2 2 0 112.8 2.8L11.8 15H9v-2.8l8.6-8.6z" /></svg>
                     </button>
@@ -114,6 +165,9 @@ export function MenuScreen({ foodItems, onOpenAdd, onEdit, onDelete, onToggleAva
                   </div>
                   <div style={{ fontSize: 12.5, color: 'var(--t2)', lineHeight: 1.55, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{item.desc || 'No description added yet.'}</div>
                   <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginTop: 2 }}>
+                    <button className={`btn btn-sm ${item.featured ? 'btn-primary' : 'btn-ghost'}`} style={{ padding: '3px 8px', fontSize: 10 }} onClick={() => onToggleFeatured(item.id, !item.featured)}>
+                      {item.featured ? 'Featured' : 'Set Featured'}
+                    </button>
                     {item.tags.length === 0 && <span style={{ fontSize: 10.5, color: 'var(--t3)' }}>No tags</span>}
                     {item.tags.map((t) => (
                       <span key={t} style={{ fontSize: 10, background: 'var(--s4)', color: 'var(--t2)', padding: '3px 8px', borderRadius: 999, fontWeight: 600 }}>{tagLabel[t] || t}</span>

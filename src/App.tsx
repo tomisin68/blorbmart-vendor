@@ -22,20 +22,27 @@ import { getVendorProfile, getVendorUserProfile, signOutVendor } from './service
 import {
   advanceVendorOrderStatus,
   archiveVendorProduct,
+  bulkUpdateVendorProducts,
   buildChartFromTransactions,
   createWithdrawal,
   fetchVendorNotifications,
   fetchVendorOrders,
   fetchVendorProducts,
+  fetchVendorStoreControls,
   fetchVendorStore,
   fetchWalletOverview,
   fetchWalletSummary,
   fetchWalletTransactions,
   fetchWithdrawals,
+  reorderVendorProducts,
   markAllVendorNotificationsRead,
   markVendorNotificationRead,
   saveVendorProduct,
+  saveVendorStoreControls,
+  sendVendorOrderDelay,
   setVendorProductAvailability,
+  setVendorProductFeatured,
+  setVendorOrderReadyInMinutes,
 } from './services/vendorPortal';
 import type { VendorProfile, VendorUserProfile } from './types/firebase';
 import type { BankAccount, VendorOrder, WalletOverview, WalletSummary, WithdrawalRecord } from './types/portal';
@@ -54,6 +61,12 @@ const PAGES: Record<PageKey, string> = {
 };
 
 interface Closure { date: string; reason: string; }
+interface StoreControls {
+  isOpen: boolean;
+  pauseUntil: string | null;
+  weeklyHours: WeekScheduleRow[];
+  holidays: Closure[];
+}
 
 function App() {
   const [page, setPage] = useState<PageKey>('overview');
@@ -77,6 +90,8 @@ function App() {
   const [kitchenOpen, setKitchenOpen] = useState(true);
   const [schedule, setSchedule] = useState<WeekScheduleRow[]>(WEEK_SCHEDULE);
   const [closures, setClosures] = useState<Closure[]>([]);
+  const [storeControls, setStoreControls] = useState<StoreControls | null>(null);
+  const [pauseMinutes, setPauseMinutes] = useState(30);
   const [dashboardLoading, setDashboardLoading] = useState(false);
   const [withdrawProcessing, setWithdrawProcessing] = useState(false);
 
@@ -110,14 +125,21 @@ function App() {
       }
 
       try {
-        const [vendorData, userData, storeData] = await Promise.all([
+        const [vendorData, userData, storeData, controls] = await Promise.all([
           getVendorProfile(user.uid),
           getVendorUserProfile(user.uid),
           fetchVendorStore(user.uid),
+          fetchVendorStoreControls().catch(() => null),
         ]);
         setVendorProfile(vendorData);
         setUserProfile(userData);
         setStore(storeData);
+        if (controls) {
+          setStoreControls(controls);
+          setKitchenOpen(Boolean(controls.isOpen));
+          if (Array.isArray(controls.weeklyHours) && controls.weeklyHours.length) setSchedule(controls.weeklyHours);
+          if (Array.isArray(controls.holidays)) setClosures(controls.holidays);
+        }
       } catch (error) {
         console.error('Failed to load vendor profile:', error);
       } finally {
@@ -259,6 +281,9 @@ function App() {
         avail: item.avail,
         tags: item.tags,
         emoji: item.emoji || (item.cat === 'rice' ? '🍛' : item.cat === 'soup' ? '🥣' : item.cat === 'protein' ? '🍗' : '🥤'),
+        image: item.image || '',
+        featured: Boolean(item.featured),
+        menuOrder: Number(item.menuOrder || Date.now()),
       };
 
       setFoodItems((prev) => {
@@ -306,6 +331,72 @@ function App() {
     } catch (error) {
       showToast('Failed to update notifications', false);
     }
+  };
+
+  const copyFood = async (id: string) => {
+    const source = foodItems.find((item) => item.id === id);
+    if (!source || !currentUser) return;
+    await saveFood({
+      name: `${source.name} (Copy)`,
+      cat: source.cat,
+      price: source.price,
+      desc: source.desc,
+      prep: source.prep,
+      avail: source.avail,
+      tags: [...source.tags],
+      emoji: source.emoji,
+      image: source.image || '',
+      featured: false,
+      menuOrder: Date.now(),
+    });
+  };
+
+  const onBulkAction = async (ids: string[], action: 'soldout' | 'hide' | 'archive') => {
+    try {
+      await bulkUpdateVendorProducts(ids, action);
+      await loadDashboard();
+      showToast(`Updated ${ids.length} item(s).`);
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Bulk update failed', false);
+    }
+  };
+
+  const onReorder = async (ids: string[]) => {
+    try {
+      await reorderVendorProducts(ids);
+      setFoodItems((prev) => {
+        const map = new Map(prev.map((item) => [item.id, item]));
+        return ids.map((id, index) => ({ ...(map.get(id) as FoodItem), menuOrder: index + 1 })).filter(Boolean);
+      });
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Failed to reorder menu', false);
+    }
+  };
+
+  const onToggleFeatured = async (id: string, featured: boolean) => {
+    try {
+      await setVendorProductFeatured(id, featured);
+      setFoodItems((prev) => prev.map((item) => (item.id === id ? { ...item, featured } : item)));
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Failed to update featured item', false);
+    }
+  };
+
+  const saveControls = async (next: Partial<StoreControls> & { pauseMinutes?: number }) => {
+    const payload: StoreControls = {
+      isOpen: next.isOpen ?? storeControls?.isOpen ?? kitchenOpen,
+      pauseUntil: next.pauseUntil ?? storeControls?.pauseUntil ?? null,
+      weeklyHours: next.weeklyHours ?? storeControls?.weeklyHours ?? schedule,
+      holidays: next.holidays ?? storeControls?.holidays ?? closures,
+    };
+    await saveVendorStoreControls({
+      isOpen: payload.isOpen,
+      pauseMinutes: next.pauseMinutes || 0,
+      weeklyHours: payload.weeklyHours,
+      holidays: payload.holidays,
+    });
+    setStoreControls(payload);
+    setKitchenOpen(payload.isOpen);
   };
 
   if (!authReady) {
@@ -375,8 +466,12 @@ function App() {
                 foodItems={foodItems}
                 onOpenAdd={() => { setFoodModalOpen(true); setEditingFoodId(null); }}
                 onEdit={(id) => { setEditingFoodId(id); setFoodModalOpen(true); }}
+                onCopy={copyFood}
                 onDelete={deleteFood}
                 onToggleAvail={toggleAvail}
+                onToggleFeatured={onToggleFeatured}
+                onBulkAction={onBulkAction}
+                onReorder={onReorder}
               />
             )}
             {page === 'orders' && (
@@ -386,6 +481,14 @@ function App() {
                 onTabChange={setActiveOrderTab}
                 onAdvance={advanceOrder}
                 onReject={rejectOrder}
+                onSetReadyInMinutes={async (id, minutes) => {
+                  await setVendorOrderReadyInMinutes(id, minutes);
+                  await loadDashboard();
+                }}
+                onSendDelay={async (id, minutes, reason) => {
+                  await sendVendorOrderDelay(id, minutes, reason);
+                  showToast('Delay notice sent.');
+                }}
                 kitchenOpen={kitchenOpen}
                 onGoHours={() => handleNavigate('hours')}
               />
@@ -393,14 +496,50 @@ function App() {
             {page === 'hours' && (
               <HoursScreen
                 kitchenOpen={kitchenOpen}
-                onToggleKitchen={() => setKitchenOpen((o) => !o)}
+                onToggleKitchen={async () => {
+                  try {
+                    await saveControls({ isOpen: !kitchenOpen, pauseUntil: null });
+                    showToast(!kitchenOpen ? 'Kitchen opened' : 'Kitchen paused');
+                  } catch (error) {
+                    showToast(error instanceof Error ? error.message : 'Failed to update kitchen status', false);
+                  }
+                }}
                 schedule={schedule}
                 onToggleDay={toggleDay}
                 onUpdateHour={updateHour}
-                onSaveSettings={() => showToast('Delivery settings saved!')}
+                onSaveSettings={async () => {
+                  try {
+                    await saveControls({ weeklyHours: schedule, holidays: closures });
+                    showToast('Delivery settings saved!');
+                  } catch (error) {
+                    showToast(error instanceof Error ? error.message : 'Failed to save settings', false);
+                  }
+                }}
                 closures={closures}
-                onAddClosure={addClosure}
-                onRemoveClosure={removeClosure}
+                onAddClosure={async (date, reason) => {
+                  addClosure(date, reason);
+                  try {
+                    const next = [...closures, { date, reason }];
+                    await saveControls({ holidays: next });
+                  } catch {}
+                }}
+                onRemoveClosure={async (idx) => {
+                  const next = closures.filter((_, i) => i !== idx);
+                  removeClosure(idx);
+                  try {
+                    await saveControls({ holidays: next });
+                  } catch {}
+                }}
+                pauseMinutes={pauseMinutes}
+                onPauseMinutesChange={setPauseMinutes}
+                onPauseStore={async () => {
+                  try {
+                    await saveControls({ isOpen: false, pauseMinutes });
+                    showToast(`Store paused for ${pauseMinutes} minutes`);
+                  } catch (error) {
+                    showToast(error instanceof Error ? error.message : 'Failed to pause store', false);
+                  }
+                }}
               />
             )}
             {page === 'txns' && (

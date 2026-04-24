@@ -8,6 +8,7 @@ import {
   serverTimestamp,
   setDoc,
   updateDoc,
+  writeBatch,
   where,
 } from 'firebase/firestore'
 
@@ -104,27 +105,41 @@ const categoryFromProduct = (product: Record<string, unknown>): FoodItem['cat'] 
 const emojiForCategory = (cat: FoodItem['cat']) =>
   ({ rice: '🍛', soup: '🥣', protein: '🍗', drinks: '🥤' })[cat]
 
-const uploadImageToCloudinary = async (imageDataUrl: string) => {
+export const uploadImageToCloudinary = async (
+  imageDataUrl: string,
+  onProgress?: (percent: number) => void,
+) => {
   if (!CLOUDINARY_CLOUD_NAME || !CLOUDINARY_UPLOAD_PRESET) {
     throw new Error('Cloudinary is not configured. Add VITE_CLOUDINARY_CLOUD_NAME and VITE_CLOUDINARY_UPLOAD_PRESET to vendor env.')
   }
 
-  const formData = new FormData()
-  formData.append('file', imageDataUrl)
-  formData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET)
-  formData.append('folder', 'blorbmart/menu-items')
+  return new Promise<string>((resolve, reject) => {
+    const formData = new FormData()
+    formData.append('file', imageDataUrl)
+    formData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET)
+    formData.append('folder', 'blorbmart/menu-items')
 
-  const response = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`, {
-    method: 'POST',
-    body: formData,
+    const xhr = new XMLHttpRequest()
+    xhr.open('POST', `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`)
+
+    xhr.upload.onprogress = (event) => {
+      if (!onProgress || !event.lengthComputable) return
+      onProgress(Math.round((event.loaded / event.total) * 100))
+    }
+
+    xhr.onerror = () => reject(new Error('Failed to upload image to Cloudinary'))
+    xhr.onload = () => {
+      const payload = JSON.parse(xhr.responseText || '{}')
+      if (xhr.status >= 200 && xhr.status < 300 && payload.secure_url) {
+        onProgress?.(100)
+        resolve(String(payload.secure_url))
+      } else {
+        reject(new Error(payload.error?.message || 'Failed to upload image to Cloudinary'))
+      }
+    }
+
+    xhr.send(formData)
   })
-
-  const payload = await response.json().catch(() => ({}))
-  if (!response.ok || !payload.secure_url) {
-    throw new Error(payload.error?.message || 'Failed to upload image to Cloudinary')
-  }
-
-  return String(payload.secure_url)
 }
 
 const productToFoodItem = (id: string, product: Record<string, unknown>): FoodItem => {
@@ -149,6 +164,8 @@ const productToFoodItem = (id: string, product: Record<string, unknown>): FoodIt
     avail,
     tags: Array.isArray(product.tags) ? product.tags.map(String) : [],
     emoji: String(product.emoji || emojiForCategory(cat)),
+    featured: Boolean(product.featured),
+    menuOrder: Number(product.menuOrder || 0),
     image: String(
       (Array.isArray(product.images) && product.images[0]) ||
       product.imageUrl ||
@@ -227,11 +244,18 @@ export const fetchVendorStore = async (uid: string) => {
   return null
 }
 
+export const fetchVendorStoreControls = async () => {
+  const response = await apiFetchAuth('/api/stores/me')
+  if (!response.ok) return null
+  const payload = await response.json()
+  return payload.data || null
+}
+
 export const fetchVendorProducts = async (uid: string): Promise<FoodItem[]> => {
   const snapshot = await getDocs(query(collection(db, 'products'), where('vendorId', '==', uid)))
   return snapshot.docs
     .map((item) => productToFoodItem(item.id, item.data() as Record<string, unknown>))
-    .sort((a, b) => a.name.localeCompare(b.name))
+    .sort((a, b) => Number(Boolean(b.featured)) - Number(Boolean(a.featured)) || Number(a.menuOrder || 0) - Number(b.menuOrder || 0) || a.name.localeCompare(b.name))
 }
 
 export const saveVendorProduct = async ({
@@ -240,16 +264,18 @@ export const saveVendorProduct = async ({
   userProfile,
   uid,
   store,
+  onUploadProgress,
 }: {
   item: Omit<FoodItem, 'id' | 'emoji'> & { id?: string; emoji?: string }
   vendorProfile: VendorProfile | null
   userProfile: VendorUserProfile | null
   uid: string
   store: Record<string, unknown> | null
+  onUploadProgress?: (percent: number) => void
 }) => {
   let imageUrl = item.image || ''
   if (imageUrl && imageUrl.startsWith('data:image/')) {
-    imageUrl = await uploadImageToCloudinary(imageUrl)
+    imageUrl = await uploadImageToCloudinary(imageUrl, onUploadProgress)
   }
 
   const refs = item.id ? doc(db, 'products', item.id) : doc(collection(db, 'products'))
@@ -281,6 +307,8 @@ export const saveVendorProduct = async ({
       subCategoryId: categoryMeta.subCategoryId,
       subCategoryName: categoryMeta.subCategoryName,
       hasVariants: false,
+      featured: Boolean(item.featured),
+      menuOrder: Number(item.menuOrder || Date.now()),
       imageUrl: imageUrl || null,
       images: imageUrl ? [imageUrl] : [],
       totalReviews: 0,
@@ -315,6 +343,59 @@ export const archiveVendorProduct = async (id: string) => {
   })
 }
 
+export const bulkUpdateVendorProducts = async (
+  ids: string[],
+  action: 'soldout' | 'hide' | 'archive',
+) => {
+  if (!ids.length) return
+  const batch = writeBatch(db)
+  ids.forEach((id) => {
+    const ref = doc(db, 'products', id)
+    if (action === 'soldout') {
+      batch.update(ref, {
+        status: 'active',
+        availability: 'soldout',
+        stockQuantity: 0,
+        updatedAt: serverTimestamp(),
+      })
+      return
+    }
+    if (action === 'hide') {
+      batch.update(ref, {
+        status: 'archived',
+        availability: 'hidden',
+        updatedAt: serverTimestamp(),
+      })
+      return
+    }
+    batch.update(ref, {
+      status: 'archived',
+      availability: 'hidden',
+      updatedAt: serverTimestamp(),
+    })
+  })
+  await batch.commit()
+}
+
+export const reorderVendorProducts = async (ids: string[]) => {
+  if (!ids.length) return
+  const batch = writeBatch(db)
+  ids.forEach((id, index) => {
+    batch.update(doc(db, 'products', id), {
+      menuOrder: index + 1,
+      updatedAt: serverTimestamp(),
+    })
+  })
+  await batch.commit()
+}
+
+export const setVendorProductFeatured = async (id: string, featured: boolean) => {
+  await updateDoc(doc(db, 'products', id), {
+    featured,
+    updatedAt: serverTimestamp(),
+  })
+}
+
 export const fetchVendorOrders = async (uid: string): Promise<VendorOrder[]> => {
   const snapshot = await getDocs(query(collection(db, 'orders'), where('vendorIds', 'array-contains', uid)))
 
@@ -345,10 +426,19 @@ export const fetchVendorOrders = async (uid: string): Promise<VendorOrder[]> => 
           name: String(item.productName || item.name || 'Item'),
           qty: Number(item.quantity || item.qty || 1),
           price: Number(item.price || 0),
+          prepMinutes: Number(item.prepMinutes || 0) || undefined,
         })),
         total: Number(selectedStoreOrder.total || data.totalAmount || 0),
         placed: formatRelative(data.createdAt),
         note: String(data.notes || data.note || ''),
+        readyInMinutes: Number(data.readyInMinutes || selectedStoreOrder.readyInMinutes || 0) || undefined,
+        delayNotices: Array.isArray(data.delayNotices)
+          ? data.delayNotices.map((entry: Record<string, unknown>) => ({
+              delayMinutes: Number(entry.delayMinutes || 0),
+              reason: String(entry.reason || 'Delay'),
+              createdAt: String(entry.createdAt || ''),
+            }))
+          : [],
         createdAtMs: toMillis(data.createdAt),
       } as VendorOrder
     })
@@ -368,6 +458,51 @@ export const advanceVendorOrderStatus = async (order: VendorOrder) => {
   if (!response.ok) {
     throw new Error(payload.message || 'Failed to update order')
   }
+}
+
+export const setVendorOrderReadyInMinutes = async (orderId: string, readyInMinutes: number) => {
+  const response = await apiFetchAuth(`/api/orders/${orderId}/ready-time`, {
+    method: 'POST',
+    body: JSON.stringify({ readyInMinutes }),
+  })
+  const payload = await response.json().catch(() => ({}))
+  if (!response.ok) throw new Error(payload.message || 'Failed to set ready time')
+}
+
+export const sendVendorOrderDelay = async (orderId: string, delayMinutes: number, reason: string) => {
+  const response = await apiFetchAuth(`/api/orders/${orderId}/delay`, {
+    method: 'POST',
+    body: JSON.stringify({ delayMinutes, reason }),
+  })
+  const payload = await response.json().catch(() => ({}))
+  if (!response.ok) throw new Error(payload.message || 'Failed to send delay notification')
+}
+
+export const saveVendorStoreControls = async ({
+  isOpen,
+  pauseMinutes,
+  weeklyHours,
+  holidays,
+}: {
+  isOpen: boolean
+  pauseMinutes: number
+  weeklyHours: unknown[]
+  holidays: unknown[]
+}) => {
+  await apiFetchAuth('/api/stores/me/status', {
+    method: 'PATCH',
+    body: JSON.stringify({ isOpen }),
+  })
+  if (pauseMinutes > 0) {
+    await apiFetchAuth('/api/stores/me/pause', {
+      method: 'PATCH',
+      body: JSON.stringify({ pauseMinutes }),
+    })
+  }
+  await apiFetchAuth('/api/stores/me/hours', {
+    method: 'PUT',
+    body: JSON.stringify({ weeklyHours, holidays }),
+  })
 }
 
 export const fetchVendorNotifications = async (uid: string): Promise<Notif[]> => {

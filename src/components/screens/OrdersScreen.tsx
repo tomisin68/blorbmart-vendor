@@ -3,9 +3,11 @@ import type { Order } from '../../data/mock';
 interface OrdersScreenProps {
   orders: Order[];
   activeTab: Order['status'];
-  onTabChange: (tab: Order['status']) => void;
-  onAdvance: (id: string) => void;
-  onReject: (id: string) => void;
+  onTabChange: (tab: Order['status']) => void | Promise<void>;
+  onAdvance: (id: string) => void | Promise<void>;
+  onReject: (id: string) => void | Promise<void>;
+  onSetReadyInMinutes: (id: string, minutes: number) => void | Promise<void>;
+  onSendDelay: (id: string, minutes: number, reason: string) => void | Promise<void>;
   kitchenOpen: boolean;
   onGoHours: () => void;
 }
@@ -18,7 +20,7 @@ const ORDER_FLOW = {
   done: { action: null, chipCls: 'chip-green', chipLabel: 'Delivered' },
 } as const;
 
-export function OrdersScreen({ orders, activeTab, onTabChange, onAdvance, onReject, kitchenOpen, onGoHours }: OrdersScreenProps) {
+export function OrdersScreen({ orders, activeTab, onTabChange, onAdvance, onReject, onSetReadyInMinutes, onSendDelay, kitchenOpen, onGoHours }: OrdersScreenProps) {
   const tabs: Order['status'][] = ['new', 'accepted', 'ready', 'picked', 'done'];
   const counts = tabs.reduce((acc, tab) => ({ ...acc, [tab]: orders.filter((o) => o.status === tab).length }), {} as Record<Order['status'], number>);
   const filtered = orders.filter((o) => o.status === activeTab);
@@ -112,6 +114,16 @@ export function OrdersScreen({ orders, activeTab, onTabChange, onAdvance, onReje
                     <span><b>Customer note:</b> {order.note}</span>
                   </div>
                 )}
+                {order.readyInMinutes ? (
+                  <div style={{ fontSize: 12, color: 'var(--bl)', marginBottom: 10 }}>
+                    Ready in: {order.readyInMinutes} mins
+                  </div>
+                ) : null}
+                {order.delayNotices?.length ? (
+                  <div style={{ fontSize: 12, color: 'var(--ye)', marginBottom: 10 }}>
+                    Latest delay: +{order.delayNotices[order.delayNotices.length - 1].delayMinutes} mins ({order.delayNotices[order.delayNotices.length - 1].reason})
+                  </div>
+                ) : null}
 
                 {!isDone ? (
                   <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -123,6 +135,20 @@ export function OrdersScreen({ orders, activeTab, onTabChange, onAdvance, onReje
                     )}
                     <button className="btn btn-primary" style={{ flex: 1, justifyContent: 'center' }} onClick={() => onAdvance(order.id)}>
                       {flow.action}
+                    </button>
+                    <button className="btn btn-ghost btn-sm" onClick={() => {
+                      const value = prompt('Ready in how many minutes?', '20');
+                      const minutes = Number(value || 0);
+                      if (minutes > 0) onSetReadyInMinutes(order.id, minutes);
+                    }}>
+                      Ready in...
+                    </button>
+                    <button className="btn btn-ghost btn-sm" onClick={() => {
+                      const minutes = Number(prompt('Delay minutes?', '10') || 0);
+                      const reason = prompt('Delay reason?', 'High order volume') || 'Delay';
+                      if (minutes > 0) onSendDelay(order.id, minutes, reason);
+                    }}>
+                      Send Delay
                     </button>
                   </div>
                 ) : (

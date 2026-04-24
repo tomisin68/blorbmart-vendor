@@ -1,4 +1,4 @@
-﻿import { useState } from 'react';
+import { useState } from 'react';
 import type { WeekScheduleRow } from '../../data/mock';
 
 interface Closure {
@@ -8,17 +8,20 @@ interface Closure {
 
 interface HoursScreenProps {
   kitchenOpen: boolean;
-  onToggleKitchen: () => void;
+  onToggleKitchen: () => void | Promise<void>;
   schedule: WeekScheduleRow[];
   onToggleDay: (idx: number) => void;
   onUpdateHour: (idx: number, field: 'from' | 'to', value: string) => void;
-  onSaveSettings: () => void;
+  onSaveSettings: () => void | Promise<void>;
   closures: Closure[];
-  onAddClosure: (date: string, reason: string) => void;
-  onRemoveClosure: (idx: number) => void;
+  onAddClosure: (date: string, reason: string) => void | Promise<void>;
+  onRemoveClosure: (idx: number) => void | Promise<void>;
+  pauseMinutes: number;
+  onPauseMinutesChange: (minutes: number) => void;
+  onPauseStore: () => void | Promise<void>;
 }
 
-export function HoursScreen({ kitchenOpen, onToggleKitchen, schedule, onToggleDay, onUpdateHour, onSaveSettings, closures, onAddClosure, onRemoveClosure }: HoursScreenProps) {
+export function HoursScreen({ kitchenOpen, onToggleKitchen, schedule, onToggleDay, onUpdateHour, onSaveSettings, closures, onAddClosure, onRemoveClosure, pauseMinutes, onPauseMinutesChange, onPauseStore }: HoursScreenProps) {
   const [closureDate, setClosureDate] = useState('');
   const [closureReason, setClosureReason] = useState('');
 
@@ -42,6 +45,13 @@ export function HoursScreen({ kitchenOpen, onToggleKitchen, schedule, onToggleDa
             <div onClick={onToggleKitchen} id="kitchen-toggle" style={{ width: 54, height: 28, borderRadius: 999, background: kitchenOpen ? 'var(--gr)' : 'var(--t3)', cursor: 'pointer', position: 'relative', transition: 'background .3s', flexShrink: 0 }}>
               <div id="kitchen-toggle-knob" style={{ width: 22, height: 22, borderRadius: '50%', background: '#fff', position: 'absolute', top: 3, left: kitchenOpen ? 29 : 3, transition: 'left .25s', boxShadow: '0 2px 6px rgba(0,0,0,.3)' }} />
             </div>
+          </div>
+        </div>
+        <div className="card fu fu1" style={{ marginBottom: 16, maxWidth: 560 }}>
+          <div style={{ fontFamily: 'var(--hd)', fontWeight: 700, fontSize: 15, marginBottom: 10 }}>Temporary Pause Timer</div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <input className="inp" type="number" min={5} step={5} value={pauseMinutes} onChange={(e) => onPauseMinutesChange(Math.max(5, Number(e.target.value || 0)))} />
+            <button className="btn btn-ghost" onClick={onPauseStore}>Pause Store</button>
           </div>
         </div>
 

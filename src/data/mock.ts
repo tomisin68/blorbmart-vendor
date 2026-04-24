@@ -1,4 +1,4 @@
-﻿export type TxType = 'credit' | 'debit' | 'reversal' | 'adjustment';
+export type TxType = 'credit' | 'debit' | 'reversal' | 'adjustment';
 export type TxDir = 'in' | 'out';
 
 export interface Txn {
@@ -32,12 +32,15 @@ export interface FoodItem {
   tags: string[];
   emoji: string;
   image?: string; // URL or base64 string for food image
+  featured?: boolean;
+  menuOrder?: number;
 }
 
 export interface OrderItem {
   name: string;
   qty: number;
   price: number;
+  prepMinutes?: number;
 }
 
 export interface Order {
@@ -49,6 +52,8 @@ export interface Order {
   total: number;
   placed: string;
   note: string;
+  readyInMinutes?: number;
+  delayNotices?: { delayMinutes: number; reason: string; createdAt?: string }[];
 }
 
 export interface WeekScheduleRow {
