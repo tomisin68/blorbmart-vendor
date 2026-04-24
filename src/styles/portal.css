@@ -25,10 +25,14 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 @keyframes glow{0%,100%{opacity:.7}50%{opacity:1}}
 @keyframes spin{to{transform:rotate(360deg)}}
 @keyframes slideIn{from{opacity:0;transform:translateX(-10px)}to{opacity:1;transform:translateX(0)}}
+@keyframes vendorLoad{0%{transform:translateX(-70%)}50%{transform:translateX(25%)}100%{transform:translateX(120%)}}
 
 .fu{animation:fadeUp .48s cubic-bezier(.16,1,.3,1) both}
 .fu1{animation-delay:.05s}.fu2{animation-delay:.1s}.fu3{animation-delay:.15s}
 .fu4{animation-delay:.2s}.fu5{animation-delay:.25s}.fu6{animation-delay:.3s}
+
+.vendor-loading-track{width:100%;height:8px;border-radius:999px;background:var(--s3);overflow:hidden;border:1px solid var(--b1)}
+.vendor-loading-fill{height:100%;width:55%;border-radius:999px;background:linear-gradient(90deg,var(--or),var(--or2));animation:vendorLoad 1.25s ease-in-out infinite}
 
 /* Layout */
 #app{display:flex;min-height:100vh}

@@ -24,6 +24,9 @@ const CATEGORY_TO_PRODUCT: Record<FoodItem['cat'], { categoryId: string; categor
   drinks: { categoryId: 'food_drinks', categoryName: 'Food & Drinks', subCategoryId: 'beverages', subCategoryName: 'Beverages' },
 }
 
+const CLOUDINARY_CLOUD_NAME = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME
+const CLOUDINARY_UPLOAD_PRESET = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET
+
 const statusToUiStatus = (status: string): Order['status'] => {
   const normalized = String(status || '').toLowerCase()
   if (normalized === 'placed') return 'new'
@@ -101,6 +104,29 @@ const categoryFromProduct = (product: Record<string, unknown>): FoodItem['cat'] 
 const emojiForCategory = (cat: FoodItem['cat']) =>
   ({ rice: '🍛', soup: '🥣', protein: '🍗', drinks: '🥤' })[cat]
 
+const uploadImageToCloudinary = async (imageDataUrl: string) => {
+  if (!CLOUDINARY_CLOUD_NAME || !CLOUDINARY_UPLOAD_PRESET) {
+    throw new Error('Cloudinary is not configured. Add VITE_CLOUDINARY_CLOUD_NAME and VITE_CLOUDINARY_UPLOAD_PRESET to vendor env.')
+  }
+
+  const formData = new FormData()
+  formData.append('file', imageDataUrl)
+  formData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET)
+  formData.append('folder', 'blorbmart/menu-items')
+
+  const response = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`, {
+    method: 'POST',
+    body: formData,
+  })
+
+  const payload = await response.json().catch(() => ({}))
+  if (!response.ok || !payload.secure_url) {
+    throw new Error(payload.error?.message || 'Failed to upload image to Cloudinary')
+  }
+
+  return String(payload.secure_url)
+}
+
 const productToFoodItem = (id: string, product: Record<string, unknown>): FoodItem => {
   const cat = categoryFromProduct(product)
   const status = String(product.status || 'active').toLowerCase()
@@ -123,6 +149,12 @@ const productToFoodItem = (id: string, product: Record<string, unknown>): FoodIt
     avail,
     tags: Array.isArray(product.tags) ? product.tags.map(String) : [],
     emoji: String(product.emoji || emojiForCategory(cat)),
+    image: String(
+      (Array.isArray(product.images) && product.images[0]) ||
+      product.imageUrl ||
+      product.image ||
+      '',
+    ) || undefined,
   }
 }
 
@@ -215,6 +247,11 @@ export const saveVendorProduct = async ({
   uid: string
   store: Record<string, unknown> | null
 }) => {
+  let imageUrl = item.image || ''
+  if (imageUrl && imageUrl.startsWith('data:image/')) {
+    imageUrl = await uploadImageToCloudinary(imageUrl)
+  }
+
   const refs = item.id ? doc(db, 'products', item.id) : doc(collection(db, 'products'))
   const categoryMeta = CATEGORY_TO_PRODUCT[item.cat]
   const status = item.avail === 'hidden' ? 'archived' : 'active'
@@ -244,7 +281,8 @@ export const saveVendorProduct = async ({
       subCategoryId: categoryMeta.subCategoryId,
       subCategoryName: categoryMeta.subCategoryName,
       hasVariants: false,
-      images: item.image ? [item.image] : [],
+      imageUrl: imageUrl || null,
+      images: imageUrl ? [imageUrl] : [],
       totalReviews: 0,
       totalSold: 0,
       rating: 0,

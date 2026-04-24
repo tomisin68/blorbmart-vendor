@@ -310,8 +310,13 @@ function App() {
 
   if (!authReady) {
     return (
-      <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', background: 'var(--bg)', color: 'var(--t2)' }}>
-        Connecting to Firebase...
+      <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', background: 'var(--bg)', color: 'var(--t2)', padding: '24px' }}>
+        <div style={{ width: 'min(360px, 90vw)' }}>
+          <div style={{ marginBottom: '10px', fontWeight: 600, letterSpacing: '0.01em' }}>Loading vendor portal...</div>
+          <div className="vendor-loading-track" aria-live="polite" aria-label="Loading">
+            <div className="vendor-loading-fill" />
+          </div>
+        </div>
       </div>
     );
   }

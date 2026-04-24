@@ -91,8 +91,8 @@ export function MenuScreen({ foodItems, onOpenAdd, onEdit, onDelete, onToggleAva
 
             return (
               <div className="card" key={item.id} style={{ padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-                <div style={{ height: 128, background: 'linear-gradient(135deg,var(--s3),var(--s4))', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative', fontSize: 52, flexShrink: 0 }}>
-                  {item.emoji}
+                <div style={{ height: 128, background: item.image ? `url(${item.image}) center/cover no-repeat` : 'linear-gradient(135deg,var(--s3),var(--s4))', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative', fontSize: 52, flexShrink: 0 }}>
+                  {!item.image && item.emoji}
                   <div style={{ position: 'absolute', inset: 0, background: isHidden || isOut ? 'rgba(0,0,0,.35)' : 'linear-gradient(to top,rgba(0,0,0,.18),transparent)', pointerEvents: 'none' }} />
                   <div style={{ position: 'absolute', top: 10, left: 10 }}>
                     <span className={`chip ${statusClass}`}>{statusLabel}</span>
