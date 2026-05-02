@@ -24,7 +24,7 @@ export interface Notif {
 export interface FoodItem {
   id: string;
   name: string;
-  cat: 'rice' | 'soup' | 'protein' | 'drinks';
+  cat: 'rice' | 'swallow' | 'soup' | 'protein' | 'sides' | 'snacks' | 'combos' | 'drinks';
   price: number;
   desc: string;
   prep: number;

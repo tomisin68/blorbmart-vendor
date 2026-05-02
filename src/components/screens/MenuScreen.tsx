@@ -82,13 +82,21 @@ export function MenuScreen({ foodItems, onOpenAdd, onEdit, onCopy, onDelete, onT
               <input className="inp" placeholder="Search by item name or description" style={{ paddingLeft: 34 }} value={query} onChange={(e) => setQuery(e.target.value)} />
             </div>
             <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
-              {(['all', 'rice', 'protein', 'soup', 'drinks'] as const).map((cat) => (
+              {(['all', 'rice', 'swallow', 'soup', 'protein', 'sides', 'snacks', 'combos', 'drinks'] as const).map((cat) => (
                 <button
                   key={cat}
                   className={`btn btn-sm ${catFilter === cat ? 'btn-primary' : 'btn-ghost'} menu-cat-btn`}
                   onClick={() => setCatFilter(cat)}
                 >
-                  {cat === 'all' ? 'All Items' : cat === 'rice' ? 'Rice & Swallow' : cat === 'protein' ? 'Proteins' : cat === 'soup' ? 'Soups' : 'Drinks'}
+                  {cat === 'all' ? 'All Items' :
+                   cat === 'rice' ? 'Rice' :
+                   cat === 'swallow' ? 'Swallow' :
+                   cat === 'soup' ? 'Soups' :
+                   cat === 'protein' ? 'Proteins' :
+                   cat === 'sides' ? 'Sides' :
+                   cat === 'snacks' ? 'Snacks' :
+                   cat === 'combos' ? 'Combos' :
+                   'Drinks'}
                 </button>
               ))}
             </div>

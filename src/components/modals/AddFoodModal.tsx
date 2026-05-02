@@ -18,7 +18,7 @@ const TAGS = [
   { key: 'bestseller', label: '🔥 Best Seller' },
 ];
 
-const EMOJIS: Record<string, string> = { rice: '🍛', soup: '🥣', protein: '🍗', drinks: '🥤' };
+const EMOJIS: Record<string, string> = { rice: '🍛', swallow: '🫓', soup: '🥣', protein: '🍗', sides: '🥗', snacks: '🥨', combos: '🍱', drinks: '🥤' };
 
 export function AddFoodModal({ open, editingItem, onClose, onSave }: AddFoodModalProps) {
   const [name, setName] = useState('');
@@ -179,10 +179,14 @@ export function AddFoodModal({ open, editingItem, onClose, onSave }: AddFoodModa
             <label className="lbl">Category *</label>
             <select className="inp" value={cat} onChange={(e) => setCat(e.target.value)}>
               <option value="">Select category</option>
-              <option value="rice">Rice &amp; Swallow</option>
-              <option value="protein">Proteins</option>
-              <option value="soup">Soups</option>
-              <option value="drinks">Drinks</option>
+              <option value="rice">Rice Dishes</option>
+              <option value="swallow">Swallow (Amala, Pounded Yam, etc.)</option>
+              <option value="soup">Soups & Stews</option>
+              <option value="protein">Proteins (Meat, Fish, Chicken)</option>
+              <option value="sides">Sides (Plantain, Salad, etc.)</option>
+              <option value="snacks">Snacks & Small Chops</option>
+              <option value="combos">Meal Combos & Deals</option>
+              <option value="drinks">Drinks & Beverages</option>
             </select>
           </div>
           <div><label className="lbl">Price (₦) *</label><input className="inp" value={price} onChange={(e) => setPrice(e.target.value)} type="number" placeholder="e.g. 2500" min={0} /></div>

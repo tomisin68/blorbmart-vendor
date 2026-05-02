@@ -3,6 +3,7 @@
   | 'menu'
   | 'orders'
   | 'hours'
+  | 'profile'
   | 'txns'
   | 'withdrawals'
   | 'bank'

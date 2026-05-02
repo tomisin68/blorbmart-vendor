@@ -28,9 +28,11 @@ const featureBullets = [
 ];
 
 const NIGERIAN_STATES = [
-  'Lagos', 'Abuja', 'Kano', 'Ibadan', 'Kaduna', 'Port Harcourt', 'Benin City',
-  'Aba', 'Jos', 'Ilorin', 'Oyo', 'Enugu', 'Abeokuta', 'Maiduguri', 'Zaria',
-  'Sokoto', 'Calabar', 'Uyo', 'Warri', 'Akure', 'Ikeja', 'Oshodi/Isolo'
+  'Abia', 'Adamawa', 'Akwa Ibom', 'Anambra', 'Bauchi', 'Bayelsa', 'Benue',
+  'Borno', 'Cross River', 'Delta', 'Ebonyi', 'Edo', 'Ekiti', 'Enugu', 'FCT (Abuja)',
+  'Gombe', 'Imo', 'Jigawa', 'Kaduna', 'Kano', 'Katsina', 'Kebbi', 'Kogi', 'Kwara',
+  'Lagos', 'Nasarawa', 'Niger', 'Ogun', 'Ondo', 'Osun', 'Oyo', 'Plateau', 'Rivers',
+  'Sokoto', 'Taraba', 'Yobe', 'Zamfara'
 ];
 
 export function AuthShell({ hidden, onComplete, onShowToast }: AuthShellProps) {

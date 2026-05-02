@@ -16,12 +16,16 @@ import type { FoodItem, Notif, Order, Txn } from '../data/mock'
 import { db } from '../lib/firebase'
 import { apiFetchAuth } from '../lib/api'
 import type { VendorProfile, VendorUserProfile } from '../types/firebase'
-import type { VendorOrder, WalletOverview, WalletSummary, WithdrawalRecord } from '../types/portal'
+import type { BankAccount, VendorOrder, WalletOverview, WalletSummary, WithdrawalRecord } from '../types/portal'
 
 const CATEGORY_TO_PRODUCT: Record<FoodItem['cat'], { categoryId: string; categoryName: string; subCategoryId: string; subCategoryName: string }> = {
   rice: { categoryId: 'food_drinks', categoryName: 'Food & Drinks', subCategoryId: 'meals', subCategoryName: 'Meals' },
+  swallow: { categoryId: 'food_drinks', categoryName: 'Food & Drinks', subCategoryId: 'swallow', subCategoryName: 'Swallow' },
   soup: { categoryId: 'food_drinks', categoryName: 'Food & Drinks', subCategoryId: 'soups', subCategoryName: 'Soups' },
   protein: { categoryId: 'food_drinks', categoryName: 'Food & Drinks', subCategoryId: 'proteins', subCategoryName: 'Proteins' },
+  sides: { categoryId: 'food_drinks', categoryName: 'Food & Drinks', subCategoryId: 'sides', subCategoryName: 'Sides' },
+  snacks: { categoryId: 'food_drinks', categoryName: 'Food & Drinks', subCategoryId: 'snacks', subCategoryName: 'Snacks' },
+  combos: { categoryId: 'food_drinks', categoryName: 'Food & Drinks', subCategoryId: 'combos', subCategoryName: 'Combos' },
   drinks: { categoryId: 'food_drinks', categoryName: 'Food & Drinks', subCategoryId: 'beverages', subCategoryName: 'Beverages' },
 }
 
@@ -98,12 +102,16 @@ const categoryFromProduct = (product: Record<string, unknown>): FoodItem['cat'] 
   if (sub.includes('drink') || sub.includes('beverage')) return 'drinks'
   if (sub.includes('protein')) return 'protein'
   if (sub.includes('soup')) return 'soup'
+  if (sub.includes('swallow')) return 'swallow'
+  if (sub.includes('side')) return 'sides'
+  if (sub.includes('snack')) return 'snacks'
+  if (sub.includes('combo')) return 'combos'
   if (cat.includes('drink')) return 'drinks'
   return 'rice'
 }
 
 const emojiForCategory = (cat: FoodItem['cat']) =>
-  ({ rice: '🍛', soup: '🥣', protein: '🍗', drinks: '🥤' })[cat]
+  ({ rice: '🍛', swallow: '🫓', soup: '🥣', protein: '🍗', sides: '🥗', snacks: '🥨', combos: '🍱', drinks: '🥤' })[cat]
 
 export const uploadImageToCloudinary = async (
   imageDataUrl: string,
@@ -305,6 +313,105 @@ export const createWithdrawal = async ({ amount, pin }: { amount: number; pin: s
   }
 
   return payload.data as WithdrawalRecord
+}
+
+export const setupWalletPin = async (pin: string): Promise<void> => {
+  const response = await apiFetchAuth('/api/seller-wallet/pin/setup', {
+    method: 'POST',
+    body: JSON.stringify({ pin }),
+  })
+  const payload = await response.json().catch(() => ({}))
+  if (!response.ok) {
+    throw new Error(payload.message || 'Failed to set PIN')
+  }
+}
+
+export const changeWalletPin = async (currentPin: string, newPin: string): Promise<void> => {
+  const response = await apiFetchAuth('/api/seller-wallet/pin/change', {
+    method: 'POST',
+    body: JSON.stringify({ currentPin, newPin }),
+  })
+  const payload = await response.json().catch(() => ({}))
+  if (!response.ok) {
+    throw new Error(payload.message || 'Failed to change PIN')
+  }
+}
+
+export const verifyWalletPin = async (pin: string): Promise<boolean> => {
+  const response = await apiFetchAuth('/api/seller-wallet/pin/verify', {
+    method: 'POST',
+    body: JSON.stringify({ pin }),
+  })
+  const payload = await response.json().catch(() => ({}))
+  return response.ok && payload.data?.valid === true
+}
+
+export const uploadStoreLogo = async (
+  imageDataUrl: string,
+  onProgress?: (percent: number) => void,
+): Promise<string> => {
+  if (!CLOUDINARY_CLOUD_NAME || !CLOUDINARY_UPLOAD_PRESET) {
+    throw new Error('Cloudinary is not configured. Add VITE_CLOUDINARY_CLOUD_NAME and VITE_CLOUDINARY_UPLOAD_PRESET to vendor env.')
+  }
+
+  return new Promise<string>((resolve, reject) => {
+    const formData = new FormData()
+    formData.append('file', imageDataUrl)
+    formData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET)
+    formData.append('folder', 'blorbmart/vendor-logos')
+    formData.append('transformation', 'c_fill,w_400,h_400,q_auto,f_auto')
+
+    const xhr = new XMLHttpRequest()
+    xhr.open('POST', `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`)
+
+    xhr.upload.onprogress = (event) => {
+      if (!onProgress || !event.lengthComputable) return
+      onProgress(Math.round((event.loaded / event.total) * 100))
+    }
+
+    xhr.onerror = () => reject(new Error('Failed to upload store logo to Cloudinary'))
+    xhr.onload = () => {
+      const payload = JSON.parse(xhr.responseText || '{}')
+      if (xhr.status >= 200 && xhr.status < 300 && payload.secure_url) {
+        onProgress?.(100)
+        resolve(String(payload.secure_url))
+      } else {
+        reject(new Error(payload.error?.message || 'Failed to upload store logo to Cloudinary'))
+      }
+    }
+
+    xhr.send(formData)
+  })
+}
+
+export const updateStoreProfile = async (profileData: {
+  name?: string
+  description?: string
+  phone?: string
+  email?: string
+  address?: string
+  city?: string
+  state?: string
+  logo?: string
+  category?: string
+}): Promise<void> => {
+  const response = await apiFetchAuth('/api/stores/me', {
+    method: 'PATCH',
+    body: JSON.stringify(profileData),
+  })
+  const payload = await response.json().catch(() => ({}))
+  if (!response.ok) {
+    throw new Error(payload.message || 'Failed to update store profile')
+  }
+}
+
+export const fetchStoreProfile = async () => {
+  const response = await apiFetchAuth('/api/stores/me')
+  const payload = await response.json().catch(() => ({}))
+  if (!response.ok) {
+    throw new Error(payload.message || 'Failed to fetch store profile')
+  }
+  return payload.data as Record<string, unknown>
 }
 
 export const fetchVendorStore = async (uid: string) => {
@@ -634,4 +741,53 @@ export const buildChartFromTransactions = (txns: Txn[]) => {
   })
 
   return days.map(({ d, v }) => ({ d, v }))
+}
+
+export interface Bank {
+  name: string
+  code: string
+  active: boolean
+  country: string
+  currency: string
+}
+
+export const fetchBanks = async (): Promise<Bank[]> => {
+  const response = await apiFetchAuth('/api/seller-wallet/banks')
+  if (!response.ok) throw new Error('Failed to load banks')
+  const payload = await response.json()
+  return payload.data as Bank[]
+}
+
+export const verifyBankAccount = async (bankCode: string, accountNumber: string): Promise<{ bankCode: string; bankName: string; accountNumber: string; accountName: string }> => {
+  const response = await apiFetchAuth('/api/seller-wallet/bank-account/verify', {
+    method: 'POST',
+    body: JSON.stringify({ bankCode, accountNumber }),
+  })
+  const payload = await response.json().catch(() => ({}))
+  if (!response.ok) {
+    throw new Error(payload.message || 'Failed to verify bank account')
+  }
+  return payload.data
+}
+
+export const saveBankAccount = async (bankCode: string, accountNumber: string): Promise<BankAccount> => {
+  const response = await apiFetchAuth('/api/seller-wallet/bank-account', {
+    method: 'POST',
+    body: JSON.stringify({ bankCode, accountNumber }),
+  })
+  const payload = await response.json().catch(() => ({}))
+  if (!response.ok) {
+    throw new Error(payload.message || 'Failed to save bank account')
+  }
+  return payload.data as BankAccount
+}
+
+export const deleteBankAccount = async (): Promise<void> => {
+  const response = await apiFetchAuth('/api/seller-wallet/bank-account', {
+    method: 'DELETE',
+  })
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({}))
+    throw new Error(payload.message || 'Failed to delete bank account')
+  }
 }

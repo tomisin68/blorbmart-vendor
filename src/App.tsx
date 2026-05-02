@@ -13,6 +13,7 @@ import { MenuScreen } from './components/screens/MenuScreen';
 import { NotificationsScreen } from './components/screens/NotificationsScreen';
 import { OrdersScreen } from './components/screens/OrdersScreen';
 import { OverviewScreen } from './components/screens/OverviewScreen';
+import { ProfileScreen } from './components/screens/ProfileScreen';
 import { SecurityScreen } from './components/screens/SecurityScreen';
 import { TransactionsScreen } from './components/screens/TransactionsScreen';
 import { WithdrawalsScreen } from './components/screens/WithdrawalsScreen';
@@ -53,6 +54,7 @@ export const PAGES: Record<PageKey, string> = {
   orders: 'Orders',
   menu: 'Menu Items',
   hours: 'Hours & Status',
+  profile: 'Store Profile',
   txns: 'Transactions',
   withdrawals: 'Withdrawals',
   bank: 'Bank Account',
@@ -553,6 +555,9 @@ function App() {
                 }}
               />
             )}
+            {page === 'profile' && (
+              <ProfileScreen onShowToast={(msg) => showToast(msg)} />
+            )}
             {page === 'txns' && (
               <TransactionsScreen txns={txns} onOpenTxDetail={(id) => setTxDetailId(id)} />
             )}
@@ -560,7 +565,11 @@ function App() {
               <WithdrawalsScreen withdrawals={withdrawals} onOpenWithdraw={() => setWithdrawOpen(true)} />
             )}
             {page === 'bank' && (
-              <BankScreen onShowToast={(msg) => showToast(msg)} />
+              <BankScreen 
+                onShowToast={(msg) => showToast(msg)} 
+                bankAccount={bankAccount}
+                onBankAccountChange={(account) => setWallet(prev => prev ? { ...prev, bankAccount: account } : null)}
+              />
             )}
             {page === 'security' && (
               <SecurityScreen onShowToast={(msg) => showToast(msg)} />
