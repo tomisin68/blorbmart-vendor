@@ -9,7 +9,6 @@ import { TxDetailModal } from './components/modals/TxDetailModal';
 import { WithdrawModal } from './components/modals/WithdrawModal';
 import { BankScreen } from './components/screens/BankScreen';
 import { HoursScreen } from './components/screens/HoursScreen';
-import { KycScreen } from './components/screens/KycScreen';
 import { MenuScreen } from './components/screens/MenuScreen';
 import { NotificationsScreen } from './components/screens/NotificationsScreen';
 import { OrdersScreen } from './components/screens/OrdersScreen';
@@ -49,16 +48,15 @@ import type { VendorProfile, VendorUserProfile } from './types/firebase';
 import type { BankAccount, VendorOrder, WalletOverview, WalletSummary, WithdrawalRecord } from './types/portal';
 import type { PageKey } from './types/ui';
 
-const PAGES: Record<PageKey, string> = {
+export const PAGES: Record<PageKey, string> = {
   overview: 'Overview',
-  menu: 'Menu & Food',
   orders: 'Orders',
+  menu: 'Menu Items',
   hours: 'Hours & Status',
   txns: 'Transactions',
   withdrawals: 'Withdrawals',
   bank: 'Bank Account',
   security: 'Security & PIN',
-  kyc: 'KYC Verification',
   notifs: 'Notifications',
 };
 
@@ -214,6 +212,7 @@ function App() {
   const kitchenName = vendorProfile?.businessName || "Mama's Kitchen";
   const locationLabel = [vendorProfile?.lga, vendorProfile?.state].filter(Boolean).join(', ') || vendorProfile?.address || 'Set your kitchen location';
   const initials = `${userProfile?.firstName?.[0] || kitchenName[0] || currentUser?.email?.[0] || 'V'}${userProfile?.lastName?.[0] || kitchenName[1] || ''}`.toUpperCase();
+  const photoUrl = userProfile?.photoUrl || currentUser?.photoURL || '';
   const vendorStatus = vendorProfile?.vendorStatus || vendorProfile?.status || 'pending';
   const availableBalance = wallet?.availableBalance || 0;
   const bankAccount: BankAccount | null = wallet?.bankAccount || null;
@@ -439,6 +438,7 @@ function App() {
           initials={initials}
           vendorStatus={vendorStatus}
           availableBalance={availableBalance}
+          photoUrl={photoUrl}
           onSignOut={async () => {
             try {
               await signOutVendor();
@@ -564,9 +564,6 @@ function App() {
             )}
             {page === 'security' && (
               <SecurityScreen onShowToast={(msg) => showToast(msg)} />
-            )}
-            {page === 'kyc' && (
-              <KycScreen onShowToast={(msg) => showToast(msg)} />
             )}
             {page === 'notifs' && (
               <NotificationsScreen notifs={notifs} onRead={markNotifRead} onMarkAllRead={markAllRead} />

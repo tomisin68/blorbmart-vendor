@@ -12,6 +12,7 @@ interface SidebarProps {
   initials?: string;
   vendorStatus?: string;
   availableBalance?: number;
+  photoUrl?: string;
 }
 
 export function Sidebar({
@@ -26,6 +27,7 @@ export function Sidebar({
   initials = 'MK',
   vendorStatus = 'verified',
   availableBalance = 0,
+  photoUrl,
 }: SidebarProps) {
   const normalizedStatus = vendorStatus.toLowerCase();
   const statusLabel = normalizedStatus === 'active' || normalizedStatus === 'verified' ? 'Live' : 'Pending';
@@ -44,7 +46,9 @@ export function Sidebar({
       </div>
 
       <div className="sb-kitchen">
-        <div className="sb-avatar">{initials}</div>
+        <div className="sb-avatar" style={photoUrl ? { backgroundImage: `url(${photoUrl})`, backgroundSize: 'cover', backgroundPosition: 'center', color: 'transparent' } : undefined}>
+          {!photoUrl && initials}
+        </div>
         <div style={{ minWidth: 0 }}>
           <div style={{ fontWeight: 700, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{kitchenName}</div>
           <div style={{ fontSize: 11.5, color: 'var(--t2)', marginTop: 2 }}>{locationLabel}</div>
@@ -88,10 +92,6 @@ export function Sidebar({
         <button className={`nav-item ${page === 'security' ? 'active' : ''}`} onClick={() => onNavigate('security')}>
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></svg>
           Security & PIN
-        </button>
-        <button className={`nav-item ${page === 'kyc' ? 'active' : ''}`} onClick={() => onNavigate('kyc')}>
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /></svg>
-          KYC Verification
         </button>
 
         <div className="sb-section">Updates</div>

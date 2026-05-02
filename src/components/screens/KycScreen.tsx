@@ -16,7 +16,7 @@ interface KycStatus {
 export function KycScreen({ onShowToast }: KycScreenProps) {
   const [kycStatus, setKycStatus] = useState<KycStatus>({ status: 'not_started' });
   const [loading, setLoading] = useState(false);
-  const [showVerificationModal, setShowVerificationModal] = useState(false);
+  const [verificationUrl, setVerificationUrl] = useState<string | null>(null);
 
   useEffect(() => {
     // Load KYC status from backend
@@ -49,46 +49,21 @@ export function KycScreen({ onShowToast }: KycScreenProps) {
       }
       
       const result = await response.json();
-      const { sessionId, appId, verificationUrl, vendorEmail, vendorName, useApi } = result.data;
+      const { verificationUrl } = result.data;
       
-      if (useApi && verificationUrl) {
-        // Use API approach - open verification URL
-        window.open(verificationUrl, '_blank', 'width=800,height=600,scrollbars=yes,resizable=yes');
-        setShowVerificationModal(true);
-        onShowToast('KYC verification started! Complete the process in the new window.');
+      if (verificationUrl) {
+        // Show iframe with verification URL
+        setVerificationUrl(verificationUrl);
+        onShowToast('KYC verification started! Complete the process below.');
       } else {
-        // Use SDK approach
-        await loadDiditSDK();
-        
-        // Initialize Didit verification
-        if (window.Didit) {
-          window.Didit.init({
-            appId: appId,
-            sessionId: sessionId,
-            userEmail: vendorEmail,
-            userName: vendorName,
-            onSuccess: () => {
-              onShowToast('Verification completed successfully!');
-              loadKycStatus();
-            },
-            onError: (error) => {
-              onShowToast('Verification failed. Please try again.');
-              console.error('Didit error:', error);
-            },
-            onClose: () => {
-              setShowVerificationModal(false);
-            }
-          });
-          
-          setShowVerificationModal(true);
-          onShowToast('KYC verification started! Please complete the process.');
-        } else {
-          throw new Error('Didit SDK failed to load');
-        }
+        throw new Error('No verification URL received');
       }
       
       // Poll for status updates
-      setTimeout(() => loadKycStatus(), 10000);
+      setTimeout(() => {
+        loadKycStatus();
+        setVerificationUrl(null);
+      }, 30000);
     } catch (error) {
       onShowToast('Failed to start KYC verification. Please try again.');
       console.error('KYC init error:', error);
@@ -97,20 +72,6 @@ export function KycScreen({ onShowToast }: KycScreenProps) {
     }
   };
 
-  const loadDiditSDK = () => {
-    return new Promise<void>((resolve, reject) => {
-      if (window.Didit) {
-        resolve();
-        return;
-      }
-      
-      const script = document.createElement('script');
-      script.src = 'https://cdn.didit.me/sdk.js';
-      script.onload = () => resolve();
-      script.onerror = () => reject(new Error('Failed to load Didit SDK'));
-      document.head.appendChild(script);
-    });
-  };
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -302,53 +263,35 @@ export function KycScreen({ onShowToast }: KycScreenProps) {
         </div>
       </div>
 
-      {/* Verification Modal */}
-      {showVerificationModal && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          background: 'rgba(0,0,0,0.5)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 1000
-        }}>
-          <div className="card" style={{ maxWidth: 400, margin: 20 }}>
-            <div style={{ textAlign: 'center', padding: '20px' }}>
-              <div style={{ 
-                width: 60, 
-                height: 60, 
-                borderRadius: '50%', 
-                background: 'var(--org)', 
-                display: 'flex', 
-                alignItems: 'center', 
-                justifyContent: 'center', 
-                margin: '0 auto 16px' 
-              }}>
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M9 11l3 3L22 4" />
-                  <path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11" />
-                </svg>
-              </div>
-              <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 8 }}>Verification Started!</div>
-              <div style={{ color: 'var(--t3)', fontSize: 13, marginBottom: 16, lineHeight: 1.4 }}>
-                Complete the verification process in the new window that opened. 
-                This page will automatically update when you're done.
-              </div>
-              <button 
-                className="btn btn-primary"
-                onClick={() => setShowVerificationModal(false)}
-                style={{ width: '100%', justifyContent: 'center' }}
+        {/* Verification Iframe */}
+        {verificationUrl && (
+          <div className="card" style={{ marginBottom: 20, maxWidth: 500 }}>
+            <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 12 }}>Complete Verification</div>
+            <iframe
+              src={verificationUrl}
+              style={{
+                width: '100%',
+                height: '700px',
+                border: 'none',
+                borderRadius: 'var(--r2)'
+              }}
+              allow="camera; microphone; fullscreen; autoplay; encrypted-media"
+              title="KYC Verification"
+            />
+            <div style={{ marginTop: 12, textAlign: 'center' }}>
+              <button
+                className="btn btn-ghost"
+                onClick={() => {
+                  setVerificationUrl(null);
+                  loadKycStatus();
+                }}
+                style={{ justifyContent: 'center' }}
               >
-                Got it
+                Close and Check Status
               </button>
             </div>
           </div>
-        </div>
-      )}
+        )}
 
       <style>{`
         @keyframes spin {

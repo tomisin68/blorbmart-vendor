@@ -142,6 +142,77 @@ export const uploadImageToCloudinary = async (
   })
 }
 
+export const uploadProfilePhotoToCloudinary = async (
+  imageDataUrl: string,
+  onProgress?: (percent: number) => void,
+) => {
+  if (!CLOUDINARY_CLOUD_NAME || !CLOUDINARY_UPLOAD_PRESET) {
+    throw new Error('Cloudinary is not configured. Add VITE_CLOUDINARY_CLOUD_NAME and VITE_CLOUDINARY_UPLOAD_PRESET to vendor env.')
+  }
+
+  return new Promise<string>((resolve, reject) => {
+    const formData = new FormData()
+    formData.append('file', imageDataUrl)
+    formData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET)
+    formData.append('folder', 'blorbmart/vendor-profiles')
+    formData.append('transformation', 'c_fill,w_200,h_200,q_auto,f_auto')
+
+    const xhr = new XMLHttpRequest()
+    xhr.open('POST', `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`)
+
+    xhr.upload.onprogress = (event) => {
+      if (!onProgress || !event.lengthComputable) return
+      onProgress(Math.round((event.loaded / event.total) * 100))
+    }
+
+    xhr.onerror = () => reject(new Error('Failed to upload profile photo to Cloudinary'))
+    xhr.onload = () => {
+      const payload = JSON.parse(xhr.responseText || '{}')
+      if (xhr.status >= 200 && xhr.status < 300 && payload.secure_url) {
+        onProgress?.(100)
+        resolve(String(payload.secure_url))
+      } else {
+        reject(new Error(payload.error?.message || 'Failed to upload profile photo to Cloudinary'))
+      }
+    }
+
+    xhr.send(formData)
+  })
+}
+
+export const updateVendorProfilePhoto = async (photoUrl: string) => {
+  const response = await apiFetchAuth('/api/vendor-profile/photo', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ photoUrl }),
+  })
+  const payload = await response.json().catch(() => ({}))
+  if (!response.ok) {
+    throw new Error(payload.message || 'Failed to update profile photo')
+  }
+  return payload
+}
+
+export const getVendorProfilePhoto = async () => {
+  const response = await apiFetchAuth('/api/vendor-profile/photo')
+  const payload = await response.json().catch(() => ({}))
+  if (!response.ok) {
+    throw new Error(payload.message || 'Failed to get profile photo')
+  }
+  return payload.data?.photoUrl || ''
+}
+
+export const deleteVendorProfilePhoto = async () => {
+  const response = await apiFetchAuth('/api/vendor-profile/photo', {
+    method: 'DELETE',
+  })
+  const payload = await response.json().catch(() => ({}))
+  if (!response.ok) {
+    throw new Error(payload.message || 'Failed to remove profile photo')
+  }
+  return payload
+}
+
 const productToFoodItem = (id: string, product: Record<string, unknown>): FoodItem => {
   const cat = categoryFromProduct(product)
   const status = String(product.status || 'active').toLowerCase()

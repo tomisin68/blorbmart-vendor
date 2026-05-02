@@ -7,5 +7,4 @@
   | 'withdrawals'
   | 'bank'
   | 'security'
-  | 'kyc'
   | 'notifs';
