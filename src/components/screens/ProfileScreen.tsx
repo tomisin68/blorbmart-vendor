@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { compressImageFile } from '../../lib/image';
-import { uploadStoreLogo, updateStoreProfile, fetchStoreProfile } from '../../services/vendorPortal';
+import { uploadStoreLogo, updateStoreProfile, fetchStoreProfile, uploadProfilePhotoToCloudinary, updateVendorProfilePhoto, getVendorProfilePhoto, deleteVendorProfilePhoto } from '../../services/vendorPortal';
 
 interface ProfileScreenProps {
   onShowToast: (msg: string) => void;
@@ -25,6 +25,9 @@ export function ProfileScreen({ onShowToast }: ProfileScreenProps) {
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [profilePhoto, setProfilePhoto] = useState<string | null>(null);
+  const [uploadingProfile, setUploadingProfile] = useState(false);
+  const [profileUploadProgress, setProfileUploadProgress] = useState(0);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -40,6 +43,7 @@ export function ProfileScreen({ onShowToast }: ProfileScreenProps) {
 
   useEffect(() => {
     loadProfile();
+    loadProfilePhoto();
   }, []);
 
   const loadProfile = async () => {
@@ -95,6 +99,53 @@ export function ProfileScreen({ onShowToast }: ProfileScreenProps) {
   const handleRemoveLogo = () => {
     setFormData((prev) => ({ ...prev, logo: '' }));
     onShowToast('Logo removed');
+  };
+
+  const loadProfilePhoto = async () => {
+    try {
+      const photoUrl = await getVendorProfilePhoto();
+      setProfilePhoto(photoUrl || null);
+    } catch (error) {
+      console.error('Failed to load profile photo:', error);
+    }
+  };
+
+  const handleProfilePhotoUpload = async (file: File) => {
+    if (!file.type.startsWith('image/')) {
+      onShowToast('Please select an image file');
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      onShowToast('Image must be less than 5MB');
+      return;
+    }
+
+    try {
+      setUploadingProfile(true);
+      setProfileUploadProgress(0);
+      const compressed = await compressImageFile(file, 0.85);
+      const cloudinaryUrl = await uploadProfilePhotoToCloudinary(compressed, (progress) => {
+        setProfileUploadProgress(progress);
+      });
+      await updateVendorProfilePhoto(cloudinaryUrl);
+      setProfilePhoto(cloudinaryUrl);
+      onShowToast('Profile photo updated successfully!');
+    } catch (error) {
+      onShowToast(error instanceof Error ? error.message : 'Failed to upload photo');
+    } finally {
+      setUploadingProfile(false);
+      setProfileUploadProgress(0);
+    }
+  };
+
+  const handleRemoveProfilePhoto = async () => {
+    try {
+      await deleteVendorProfilePhoto();
+      setProfilePhoto(null);
+      onShowToast('Profile photo removed');
+    } catch (error) {
+      onShowToast(error instanceof Error ? error.message : 'Failed to remove photo');
+    }
   };
 
   const handleSave = async () => {
@@ -191,6 +242,67 @@ export function ProfileScreen({ onShowToast }: ProfileScreenProps) {
                 )}
                 <div style={{ fontSize: 11, color: 'var(--t3)', marginTop: 6 }}>
                   Recommended: Square image, max 5MB
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Profile Picture */}
+          <div style={{ marginBottom: 28 }}>
+            <label className="lbl">Profile Picture</label>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginTop: 8 }}>
+              <div
+                style={{
+                  width: 80,
+                  height: 80,
+                  borderRadius: '50%',
+                  background: profilePhoto ? `url(${profilePhoto}) center/cover` : 'var(--s3)',
+                  border: '2px dashed var(--b2)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  overflow: 'hidden',
+                  flexShrink: 0,
+                }}
+              >
+                {!profilePhoto && (
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--t3)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                    <circle cx="12" cy="7" r="4" />
+                  </svg>
+                )}
+              </div>
+              <div style={{ flex: 1 }}>
+                <input
+                  type="file"
+                  id="profile-photo-input"
+                  accept="image/*"
+                  style={{ display: 'none' }}
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) handleProfilePhotoUpload(file);
+                  }}
+                />
+                <button
+                  className="btn btn-primary"
+                  style={{ fontSize: 12.5, padding: '8px 16px' }}
+                  onClick={() => document.getElementById('profile-photo-input')?.click()}
+                  disabled={uploadingProfile}
+                >
+                  {uploadingProfile ? `Uploading ${profileUploadProgress}%` : profilePhoto ? 'Change Photo' : 'Upload Photo'}
+                </button>
+                {profilePhoto && (
+                  <button
+                    className="btn btn-ghost"
+                    style={{ fontSize: 12.5, padding: '8px 12px', marginLeft: 8, color: 'var(--re)' }}
+                    onClick={handleRemoveProfilePhoto}
+                    disabled={uploadingProfile}
+                  >
+                    Remove
+                  </button>
+                )}
+                <div style={{ fontSize: 11, color: 'var(--t3)', marginTop: 6 }}>
+                  Personal profile photo (max 5MB)
                 </div>
               </div>
             </div>
