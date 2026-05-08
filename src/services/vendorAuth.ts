@@ -39,6 +39,7 @@ interface VendorKycInput {
   idNumber: string
   cuisineTypes: string[]
   selfieCaptured: boolean
+  vendorType: 'general' | 'food'
 }
 
 const usersCollection = 'users'
@@ -274,6 +275,7 @@ export const submitVendorKyc = async (uid: string, input: VendorKycInput) => {
       {
         address: input.address,
         businessType: input.businessType,
+        vendorType: input.vendorType,
         state: input.state,
         lga: input.lga,
         idType: input.idType,

@@ -346,7 +346,7 @@ export function AuthShell({ hidden, onComplete, onShowToast }: AuthShellProps) {
             <span style={{ color: 'var(--or)' }}>Earn great money.</span>
           </div>
           <div style={{ fontSize: 14, color: 'var(--t3)', lineHeight: 1.7, marginBottom: 40 }}>
-            Join thousands of home kitchens and restaurants already earning on Blorbmart. Get paid directly to your wallet — no middlemen.
+            Join thousands of restaurants and food vendors already earning on Blorbmart. Get paid directly to your wallet — no middlemen.
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -452,8 +452,8 @@ export function AuthShell({ hidden, onComplete, onShowToast }: AuthShellProps) {
                 Back to sign in
               </button>
               <div style={{ marginBottom: 22 }}>
-                <div style={{ fontFamily: 'var(--hd)', fontWeight: 800, fontSize: 24, marginBottom: 4 }}>Create Account</div>
-                <div style={{ fontSize: 13, color: 'var(--t3)' }}>Start your kitchen journey on Blorbmart</div>
+                <div style={{ fontFamily: 'var(--hd)', fontWeight: 800, fontSize: 24, marginBottom: 4 }}>Create Food Vendor Account</div>
+                <div style={{ fontSize: 13, color: 'var(--t3)' }}>Start your food business on Blorbmart</div>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 16 }}>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
