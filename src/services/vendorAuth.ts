@@ -161,7 +161,6 @@ export const signInVendor = async (email: string, password: string) => {
     const otpVerified = await isVendorOtpVerifiedByUid(result.user.uid)
     if (!otpVerified) {
       await sendVendorEmailOtp(email).catch(() => undefined)
-      await signOut(auth).catch(() => undefined)
       throw new Error('Email OTP verification required. Check your email for the 6-digit code.')
     }
     await updateDoc(doc(db, usersCollection, result.user.uid), {
@@ -170,9 +169,6 @@ export const signInVendor = async (email: string, password: string) => {
     }).catch(() => undefined)
     return result.user
   } catch (error) {
-    if (auth.currentUser) {
-      await signOut(auth).catch(() => undefined)
-    }
     throw new Error(getFriendlyAuthError(error))
   }
 }
@@ -198,15 +194,11 @@ export const signInVendorWithGoogle = async () => {
     const otpVerified = await isVendorOtpVerifiedByUid(user.uid)
     if (!otpVerified) {
       if (user.email) await sendVendorEmailOtp(user.email).catch(() => undefined)
-      await signOut(auth).catch(() => undefined)
       throw new Error(`Email OTP verification required for ${user.email || 'your email'}. Check your email for the 6-digit code.`)
     }
 
     return user
   } catch (error) {
-    if (auth.currentUser) {
-      await signOut(auth).catch(() => undefined)
-    }
     throw new Error(getFriendlyAuthError(error))
   }
 }
@@ -240,7 +232,7 @@ export const registerVendor = async (input: RegisterVendorInput) => {
  */
 const sendWelcomeEmail = async (input: RegisterVendorInput) => {
   try {
-    const response = await fetch(apiUrl('/api/auth/welcome-email'), {
+    const response = await fetch(apiUrl('/api/vendor-auth/welcome-email'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -271,11 +263,11 @@ export const sendVendorEmailOtp = async (email: string) => {
   }
 }
 
-export const verifyVendorEmailOtp = async (email: string, code: string) => {
+export const verifyVendorEmailOtp = async (email: string, code: string, uid?: string) => {
   const response = await fetch(apiUrl('/api/vendor-auth/email-otp/verify'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, code }),
+    body: JSON.stringify({ email, code, uid }),
   })
   const payload = await response.json().catch(() => ({}))
   if (!response.ok) {

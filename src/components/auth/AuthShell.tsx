@@ -134,7 +134,15 @@ export function AuthShell({ hidden, onComplete, onShowToast }: AuthShellProps) {
         setTimeout(() => onComplete(), 500);
       }
     } catch (error) {
-      setLoginErr(error instanceof Error ? error.message : 'Unable to sign in.');
+      const message = error instanceof Error ? error.message : 'Unable to sign in.';
+      if (message.toLowerCase().includes('email otp verification required')) {
+        setStep('otp');
+        setOtpTimer(60);
+        setTimeout(() => otpRefs.current[0]?.focus(), 100);
+        onShowToast('Verification code sent to your email.');
+      } else {
+        setLoginErr(message);
+      }
     } finally {
       setLoading(null);
     }
@@ -155,7 +163,15 @@ export function AuthShell({ hidden, onComplete, onShowToast }: AuthShellProps) {
         setTimeout(() => onComplete(), 500);
       }
     } catch (error) {
-      setLoginErr(error instanceof Error ? error.message : 'Unable to sign in with Google.');
+      const message = error instanceof Error ? error.message : 'Unable to sign in with Google.';
+      if (message.toLowerCase().includes('email otp verification required')) {
+        setStep('otp');
+        setOtpTimer(60);
+        setTimeout(() => otpRefs.current[0]?.focus(), 100);
+        onShowToast('Verification code sent to your email.');
+      } else {
+        setLoginErr(message);
+      }
     } finally {
       setLoading(null);
     }
@@ -201,7 +217,7 @@ export function AuthShell({ hidden, onComplete, onShowToast }: AuthShellProps) {
     setOtpErr('');
     try {
       setLoading('otp');
-      await verifyVendorEmailOtp(email, code);
+      await verifyVendorEmailOtp(email, code, auth.currentUser?.uid);
       setStep('profile');
       onShowToast('Email verified successfully. Please complete your profile.');
     } catch (error) {
