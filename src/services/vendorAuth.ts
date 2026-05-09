@@ -222,12 +222,40 @@ export const registerVendor = async (input: RegisterVendorInput) => {
 
     await writeVendorUserDocs(user, input)
 
+    // Trigger welcome email from CEO (fire-and-forget)
+    sendWelcomeEmail(input).catch(() => undefined)
+
     return {
       user,
       initials: getInitials(input.firstName, input.lastName),
     }
   } catch (error) {
     throw new Error(getFriendlyAuthError(error))
+  }
+}
+
+/**
+ * Send welcome email from CEO to new vendor
+ * Called after successful registration (fire-and-forget)
+ */
+const sendWelcomeEmail = async (input: RegisterVendorInput) => {
+  try {
+    const response = await fetch(apiUrl('/api/auth/welcome-email'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: input.email,
+        firstName: input.firstName,
+        businessName: input.businessName,
+        userType: 'vendor', // Specify this is a vendor
+      }),
+    })
+    const payload = await response.json().catch(() => ({}))
+    if (!response.ok) {
+      console.error('Failed to send welcome email:', payload.message)
+    }
+  } catch (error) {
+    console.error('Welcome email error:', error)
   }
 }
 

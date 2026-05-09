@@ -75,6 +75,10 @@ export function Sidebar({
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><path d="M12 6v6l4 2" /></svg>
           Hours &amp; Status
         </button>
+        <button className={`nav-item ${page === 'profile' ? 'active' : ''}`} onClick={() => onNavigate('profile')}>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>
+          Profile
+        </button>
 
         <div className="sb-section">Money</div>
         <button className={`nav-item ${page === 'txns' ? 'active' : ''}`} onClick={() => onNavigate('txns')}>
